@@ -1,1 +1,9 @@
 # subpop_attack
+
+To generate the synthetic data for visualization purpose, go to `synthetic_data` folder and run the `generate_and_visualize.py` file. By changing the value of `class_sep` in the python script, you can control the distance of each cluster and the distance of two classes. 
+
+The folder `subpopulation_poison` contains files of adult dataset and the label flipping attack, and the attacked models are logistic regression and MLP. To run these files, execute `subpopulation_adult_compactness.py` file, and change the poison ratio if necessary. 
+
+The folder `data-poisoning-journal-release` contains files for strong KKT-attack, adapted from the [paper](https://arxiv.org/pdf/1811.00741.pdf). To run the subpopulation attack, execute `python run_kkt_attack_sub.py kkt-standard --dataset mnist_17`, and change the dataset name if needed. If you want to run the label flipping attack, add an additional aruguement `--label_flip_baseline` to the command line. Subpopulations for MNIST_17 and Adult are clusters. For Enron dataset, subpopulation is defined based on features. To run the subpopulation attack on Enron, run `python run_kkt_attack_sub.py kkt-standard`. Label flippping attack can be run by adding additional term `--label_flip_baseline`. If you want to run the attack on whole distribution, run `python run_kkt_attack.py kkt-standard --dataset mnist_17`. 
+
+Note for strong KKT-attack: it requires some special convex optimization solvers like cvxpy, there you can create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release).

@@ -9,7 +9,7 @@ The folder `data-poisoning-journal-release` contains files for strong KKT-attack
 Note for strong KKT-attack: it requires some special convex optimization solvers like cvxpy, there you can create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release). -->
 
 ## Experiment Setup
-This repository contains the code for reproducing results of adaptive poisoning attacks. First, please download the related data files from [here](https://drive.google.com/file/d/1FPitoMJhbvNa_iilfIMsL62ELK8lmF1j/view?usp=sharing) and place the extracted folder `files` in the same directory as the source files. 
+This repository contains the code for reproducing results of adaptive poisoning attacks. First, please download the related data files from [here](https://drive.google.com/file/d/1Co8TStQKCU81bhR6hthnqqwsvAsIGsC_/view?usp=sharing) and place the extracted folder `files` in the same directory as the source files. 
 
 Our adaptive online attack and the KKT attack require a convex optimization tool named `cvxpy` and a solver named `Gurobi`. We recommend to create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release). 
 

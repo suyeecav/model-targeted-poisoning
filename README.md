@@ -9,9 +9,9 @@ The folder `data-poisoning-journal-release` contains files for strong KKT-attack
 Note for strong KKT-attack: it requires some special convex optimization solvers like cvxpy, there you can create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release). -->
 
 ## Experiment Setup
-Our adaptive online attack and the KKT attack require a convex optimization tool named `cvxpy` and a solver named `Gurobi`. We recommend to create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release). 
+This repository contains the code for reproducing results of adaptive poisoning attacks. First, please download the related data files from [here](https://drive.google.com/file/d/1FPitoMJhbvNa_iilfIMsL62ELK8lmF1j/view?usp=sharing) and place the extracted folder `files` in the same directory as the source files. 
 
-This repository contains the code for reproducing results of adaptive poisoning attacks. First, please download the related data files from [here]() and place the extracted folder `files` in the same directory as the source files. 
+Our adaptive online attack and the KKT attack require a convex optimization tool named `cvxpy` and a solver named `Gurobi`. We recommend to create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release). 
 
 ## Generate Valid Target Classifiers and Compare 
 To generate the target classifier using the optimization scheme presented in the paper, please run the using the command and replace the dataset name if needed (i.e., replace the `adult` with `mnist_17`)
@@ -28,5 +28,5 @@ To run both the KKT attack and the adaptive online attack proposed in this paper
 ```
 python run_kkt_online_attack.py --dataset adult
 ``` 
-By default, the attack will be performed to attack both the actual target model (obtained from the optimization scheme in the paper), classifiers produced by the KKT and adaptive online attacks in the paper. If you hope to only attack the actual target classifier, set the keyword `target_model` as `real`, and set `target_model` as `kkt` to attack the kkt attack produced model, and `ol` to attack classifier produced by our adaptive online attack.
+By default, the attack will be performed to attack both the actual target model (obtained from the optimization scheme in the paper), classifiers produced by the KKT and adaptive online attacks in the paper. If you hope to only attack the actual target classifier, set the keyword `--target_model` as `real`, and set `--target_model` as `kkt` to attack the kkt attack produced model, and `ol` to attack classifier produced by our adaptive online attack.
 

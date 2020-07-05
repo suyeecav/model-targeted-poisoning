@@ -412,18 +412,19 @@ class TwoClassKKT(object):
         # additional constraints on synthetic dataset
         if x_pos_tuple:
             assert x_neg_tuple != None
-            x_pos_min,x_pos_max = x_pos_tuple
-            x_neg_min,x_neg_max = x_neg_tuple
+            self.x_pos_min,self.x_pos_max = x_pos_tuple
+            self.x_neg_min,self.x_neg_max = x_neg_tuple
+            
             if dataset_name == 'adult':
-                self.constraints.append(self.cvx_x_pos_real >= x_pos_min)
-                self.constraints.append(self.cvx_x_pos_real <= x_pos_max)
-                self.constraints.append(self.cvx_x_neg_real >= x_neg_min)
-                self.constraints.append(self.cvx_x_neg_real <= x_neg_max)
+                self.constraints.append(self.cvx_x_pos_real >= self.x_pos_min)
+                self.constraints.append(self.cvx_x_pos_real <= self.x_pos_max)
+                self.constraints.append(self.cvx_x_neg_real >= self.x_neg_min)
+                self.constraints.append(self.cvx_x_neg_real <= self.x_neg_max)
             else:
-                self.constraints.append(self.cvx_x_pos >= x_pos_min)
-                self.constraints.append(self.cvx_x_pos <= x_pos_max)
-                self.constraints.append(self.cvx_x_neg >= x_neg_min)
-                self.constraints.append(self.cvx_x_neg <= x_neg_max)
+                self.constraints.append(self.cvx_x_pos >= self.x_pos_min)
+                self.constraints.append(self.cvx_x_pos <= self.x_pos_max)
+                self.constraints.append(self.cvx_x_neg >= self.x_neg_min)
+                self.constraints.append(self.cvx_x_neg <= self.x_neg_max)
 
         if constrain_max_loss:
             self.constraints.append(
@@ -565,6 +566,11 @@ class TwoClassKKT(object):
         else:
             best_x_pos = np.array(self.cvx_x_pos.value)
             best_x_neg = np.array(self.cvx_x_neg.value)
+        
+        assert np.amax(best_x_pos) <= (self.x_pos_max + float(self.x_pos_max)/100)
+        assert np.amin(best_x_pos) >= (self.x_pos_min - np.abs(float(self.x_pos_min))/100)
+        assert np.amax(best_x_neg) <= (self.x_neg_max + float(self.x_neg_max)/100)
+        assert np.amin(best_x_neg) >= (self.x_neg_min - np.abs(float(self.x_neg_min))/100)
 
         # #plan for handling integers by relaxing and then rounding to largest value 
         # if self.dataset == 'adult':

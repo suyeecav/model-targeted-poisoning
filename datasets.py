@@ -3,6 +3,10 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
+from sklearn.datasets import make_classification
+# generate some sthnthetic dataset
+generate_dataset = make_classification
+
 import os
 import json
 
@@ -134,6 +138,45 @@ def load_enron_sparse():
     check_orig_data(X_train, Y_train, X_test, Y_test)
     return X_train, Y_train, X_test, Y_test
 
+def load_2d_toy(class_sep = 1.0):
+    if not os.path.isdir(DATA_FOLDER):
+        os.mkdir(DATA_FOLDER = 'files/data')
+    data_fname = DATA_FOLDER + '/class_sep-{}_2d_toy'.format(class_sep)
+    # generate a dataset with 5000 examples, 3000 for train, 2000 for test
+    if not os.path.isfile(data_fname):
+        full_x, full_y = generate_dataset(n_samples = 5000,
+                        n_features=2,
+                        n_informative=2,
+                        n_redundant=0,
+                        n_classes=2,
+                        n_clusters_per_class=2,
+                        flip_y=0.001,
+                        class_sep=class_sep,
+                        random_state=0)
+        data_full = {}
+        data_full['full_x'],data_full['full_y'] = full_x,full_y
+        data_file = open(data_fname, 'wb')
+        pickle.dump(data_full, data_file,protocol=2)
+        data_file.close()
+    else:
+        data_file = open(data_fname, 'rb')
+        f = pickle.load(data_file)
+        full_x,full_y = f['full_x'],f['full_y']
+    print(full_x[:,1].shape)
+    print(full_y.shape)
+    print(full_x[:,1].shape)
+    print(full_y.shape)
+
+    train_samples = 3000
+    # split between train and test datasets
+    X_train = full_x[:train_samples]
+    X_test = full_x[train_samples:]
+    Y_train = full_y[:train_samples]
+    Y_test = full_y[train_samples:]
+    # convert to {-1,1} as class labels
+    Y_train = 2*Y_train-1
+    Y_test = 2*Y_test-1
+    return X_train, Y_train, X_test, Y_test 
 
 def load_imdb_sparse():
     dataset_path = os.path.join(DATA_FOLDER)
@@ -161,7 +204,7 @@ def load_adult():
     return X_train, Y_train, X_test, Y_test 
 
 
-def load_dataset(dataset_name):
+def load_dataset(dataset_name,class_sep = 1.0):
     if dataset_name == 'imdb':
         return load_imdb_sparse()
     elif dataset_name == 'enron':
@@ -170,6 +213,8 @@ def load_dataset(dataset_name):
         return load_dogfish()
     elif dataset_name == 'adult':
         return load_adult()
+    elif dataset_name == '2d_toy':
+        return load_2d_toy(class_sep=class_sep)
     else:
         dataset_path = os.path.join(DATA_FOLDER)
         f = np.load(os.path.join(dataset_path, '%s_train_test.npz' % dataset_name))

@@ -1,0 +1,22 @@
+# backports.functools-lru-cache==1.6.1
+numpy==1.16.2
+# certifi==2019.11.28
+# CVXcanon==0.1.1
+cvxpy==0.4.11
+cycler==0.10.0
+dill==0.3.1.1
+ecos==2.0.7.post1
+fastcache==1.1.0
+h5py==2.9.0
+kiwisolver==1.1.0
+matplotlib==2.2.5
+multiprocess==0.70.9
+pyparsing==2.4.6
+python-dateutil==2.8.1
+pytz==2019.3
+scikit-learn==0.20.3
+scipy==1.2.3
+scs==2.1.1.post2
+six==1.14.0
+subprocess32==3.5.4
+toolz==0.10.0

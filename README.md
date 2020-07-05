@@ -1,32 +1,34 @@
-# subpop_attack
+# About
+This repository contains the code of reproducing results of the submited paper "Model-Targeted Poisoning Attacks: Provable Convergence and Certified Bounds" and the paper ID is 10545. This repository contains the code to generate target classifier, run poisoning attacks to generated poisoned data and train classifiers on the poisoned data, and also scripts to help show the results in the paper. We do not include pretrained models since it is very cheap to train them. Our code can run on any personal laptop.
 
-<!-- To generate the synthetic data for visualization purpose, go to `synthetic_data` folder and run the `generate_and_visualize.py` file. By changing the value of `class_sep` in the python script, you can control the distance of each cluster and the distance of two classes. 
-
-The folder `subpopulation_poison` contains files of adult dataset and the label flipping attack, and the attacked models are logistic regression and MLP. To run these files, execute `subpopulation_adult_compactness.py` file, and change the poison ratio if necessary. 
-
-The folder `data-poisoning-journal-release` contains files for strong KKT-attack, adapted from the [paper](https://arxiv.org/pdf/1811.00741.pdf). To run the subpopulation attack, execute `python run_kkt_attack_sub.py kkt-standard --dataset mnist_17`, and change the dataset name if needed. If you want to run the label flipping attack, add an additional aruguement `--label_flip_baseline` to the command line. Subpopulations for MNIST_17 and Adult are clusters. For Enron dataset, subpopulation is defined based on features. To run the subpopulation attack on Enron, run `python run_kkt_attack_sub.py kkt-standard`. Label flippping attack can be run by adding additional term `--label_flip_baseline`. If you want to run the attack on whole distribution, run `python run_kkt_attack.py kkt-standard --dataset mnist_17`. 
-
-Note for strong KKT-attack: it requires some special convex optimization solvers like cvxpy, there you can create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release). -->
-
-## Experiment Setup
-This repository contains the code for reproducing results of adaptive poisoning attacks. First, please download the related data files from [here](https://drive.google.com/file/d/1Co8TStQKCU81bhR6hthnqqwsvAsIGsC_/view?usp=sharing) and place the extracted folder `files` in the same directory as the source files. 
-
-Our adaptive online attack and the KKT attack require a convex optimization tool named `cvxpy` and a solver named `Gurobi`. We recommend to create a virtual python environment (e.g., conda create XXX) and install the required libraries. Details about the packages can be found [here](https://github.com/kohpangwei/data-poisoning-journal-release). 
-
-## Generate Valid Target Classifiers and Compare 
-To generate the target classifier using the optimization scheme presented in the paper, please run the using the command and replace the dataset name if needed (i.e., replace the `adult` with `mnist_17`)
+# Install Dependencies
+The program requires the following key dependencies:
+`python 2.7`, `numpy`, `cvxpy (version 0.4.11)`, `scikit-learn`, `scipy`, `matplotlib`. You can directly install the dependencies by running the following command:
 ```
-python generate_target_theta_optimization.py --dataset adult
-``` 
-When all the valid target classifiers (satisfy attacker objective) are generated, you can also check their individual performances to validate whether thetas with lower loss on clean training set indeed require lower number of points. To do so, run the following command and repace the dataset name if needed.
-```
-python check_target_thetas.py --dataset adult
+pip install -r requirements.txt
 ```
 
-## Run the Actual Attacks and Obtain the Lower Bound
-To run both the KKT attack and the adaptive online attack proposed in this paper, run the following command and replace the dataset name if needed.
+# Run the Code
+Please follow the instructions below to reproduce the results shown in the paper:
+1. unzip the file `files.zip` and you will see folder `files`, which contains the Adult and MNIST-17 datasets used for evaluation in the paper. In addition, we also provide the target classifiers for each dataset in the folder `files/target_classifiers`.
+2. Skip this step if you wish to use the target classifiers we provide. Else, you can generate the target classifiers by running the command below. To generate target classifiers for the MNIST-17 dataset, replace `adult` with `mnist_17` in the command below. In the paper, we also improved the target model generation process for the MNIST-17 dataset and if you wish to use improved target model, add `--improved` in the command below.
 ```
-python run_kkt_online_attack.py --dataset adult
-``` 
-By default, the attack will be performed to attack both the actual target model (obtained from the optimization scheme in the paper), classifiers produced by the KKT and adaptive online attacks in the paper. If you hope to only attack the actual target classifier, set the keyword `--target_model` as `real`, and set `--target_model` as `kkt` to attack the kkt attack produced model, and `ol` to attack classifier produced by our adaptive online attack.
+python generate_target_theta.py --dataset adult
+```
+
+3. To run our attack, please use the command below. Again, replace `adult` with `mnist_17` to run the attack on MNIST-17 dataset. For the MNIST-17 dataset, if you wish to attack the improved target classifier, add `--improved` in the command below. By feeding different values to `--rand_seed`, we can repeat the attack process for multiple times and obtain more stable results. The Adult results in the paper are obtained by feeding `12`,`23`,`35`,`45` individually to `--rand_seed`. For MNIST-17 dataset, we feed `12`,`23`,`34`,`45` individually to `--rand_seed`.
+```
+python run_kkt_online_attack.py --rand_seed 12 --dataset adult
+```
+
+4. Once the attack is finished, run the following command to obtain the averaged results of the attack, which will be saved in directory `files/final_reslts` in `.csv` form. Replace dataset if necessary and if you used different random seeds for `--rand_seed` from above, please change the random_seeds specified in the source file.
+```
+python process_avg_results.py --dataset adult
+```
+
+
+5. To reproduce the figures in the paper, run the following command. Replace the dataset if necessary and also be careful if the random seeds are different from the ones used above and change accordingly in the source file. 
+```
+python plot_results.py --dataset adult
+```
 

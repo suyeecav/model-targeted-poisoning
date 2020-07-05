@@ -1,5 +1,5 @@
 # About
-This repository contains the code of reproducing results of the submited paper "Model-Targeted Poisoning Attacks: Provable Convergence and Certified Bounds" and the paper ID is 10545. This repository contains the code to generate target classifier, run poisoning attacks to generated poisoned data and train classifiers on the poisoned data, and also scripts to help show the results in the paper. We do not include pretrained models since it is very cheap to train them. Our code can run on any personal laptop.
+This repository maintains code for the paper [Model-Targeted Poisoning Attacks: Provable Convergence and Certified Bounds](https://arxiv.org/abs/2006.16469).
 
 # Install Dependencies
 The program requires the following key dependencies:

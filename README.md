@@ -1,5 +1,5 @@
 # About
-This repository maintains code for the paper [Model-Targeted Poisoning Attacks: Provable Convergence and Certified Bounds](https://arxiv.org/abs/2006.16469).
+This repository maintains code for the paper [Model-Targeted Poisoning Attacks: Provable Convergence and Certified Bounds](https://arxiv.org/abs/2006.16469). The KKT attack is adapted from its [original repository](https://github.com/kohpangwei/data-poisoning-journal-release).
 
 # Install Dependencies
 The program requires the following key dependencies:

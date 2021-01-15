@@ -25,6 +25,8 @@ import sys
 
 from sklearn.externals import joblib
 
+def random_sample(low,high):
+    return (high-low) * np.random.random_sample() + low
 def make_dirs(args):
     dataset_name = args.dataset
     if args.improved:
@@ -33,27 +35,27 @@ def make_dirs(args):
         tar_gen_proc = 'orig'
     rand_seed = args.rand_seed
 
-    if not os.path.isdir('files/results/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num)):
-        os.makedirs('files/results/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num))
-    if not os.path.isdir('files/kkt_models/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num)):
-        os.makedirs('files/kkt_models/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num))
+    if not os.path.isdir('files/results/{}/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num)):
+        os.makedirs('files/results/{}/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num))
+    if not os.path.isdir('files/kkt_models/{}/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num)):
+        os.makedirs('files/kkt_models/{}/{}/{}/{}/{}/approx_optimal_attack'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num))
 
-    if not os.path.isdir('files/results/{}/{}/{}/{}'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num)):
-        os.makedirs('files/results/{}/{}/{}/{}'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num))
-    if not os.path.isdir('files/kkt_models/{}/{}/{}/{}'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num)):
-        os.makedirs('files/kkt_models/{}/{}/{}/{}'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num))
+    if not os.path.isdir('files/results/{}/{}/{}/{}/{}'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num)):
+        os.makedirs('files/results/{}/{}/{}/{}/{}'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num))
+    if not os.path.isdir('files/kkt_models/{}/{}/{}/{}/{}'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num)):
+        os.makedirs('files/kkt_models/{}/{}/{}/{}/{}'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num))
     # if not os.path.isdir('files/kkt_models/{}/all_models/'.format(dataset_name)):
     #     os.makedirs('files/kkt_models/{}/all_models/'.format(dataset_name))
-    if not os.path.isdir('files/online_models/{}/{}/{}/{}'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num)):
-        os.makedirs('files/online_models/{}/{}/{}/{}'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num))
-    if not os.path.isdir('files/target_classifiers/{}'.format(dataset_name)):
-        os.makedirs('files/target_classifiers/{}'.format(dataset_name))
+    if not os.path.isdir('files/online_models/{}/{}/{}/{}/{}'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num)):
+        os.makedirs('files/online_models/{}/{}/{}/{}/{}'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num))
+    if not os.path.isdir('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type)):
+        os.makedirs('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type))
 
-    if not os.path.isdir('files/online_models/{}/{}/{}/{}/check_valid_thetas'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num)):
-        os.makedirs('files/online_models/{}/{}/{}/{}/check_valid_thetas'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num))
+    if not os.path.isdir('files/online_models/{}/{}/{}/{}/{}/check_valid_thetas'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num)):
+        os.makedirs('files/online_models/{}/{}/{}/{}/{}/check_valid_thetas'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num))
 
-    if not os.path.isdir('files/results/{}/{}/{}/{}/check_valid_thetas/'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num)):
-        os.makedirs('files/results/{}/{}/{}/{}/check_valid_thetas/'.format(dataset_name,rand_seed,tar_gen_proc,args.repeat_num))
+    if not os.path.isdir('files/results/{}/{}/{}/{}/{}/check_valid_thetas/'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num)):
+        os.makedirs('files/results/{}/{}/{}/{}/{}/check_valid_thetas/'.format(dataset_name,args.model_type,rand_seed,tar_gen_proc,args.repeat_num))
 
 def svm_model(**kwargs):
     return svm.LinearSVC(loss='hinge', **kwargs)
@@ -93,14 +95,192 @@ def compute_grad_norm_diff(target_theta,target_bias,total_epsilon,\
     grad_norm_diff = np.linalg.norm(target_grad + poison_grad_at_target_theta)
     return grad_norm_diff
 
+# below is related to logistic regression loss functions
+def sigmoid(scores):
+    return 1 / (1 + np.exp(-scores))
+def log_likelihood(features, target, weights,bias):
+    scores = np.dot(features, weights) + bias
+    ll = np.sum( target*scores - np.log(1 + np.exp(scores)) )
+    return ll
+def compute_max_loss_diff(x,y,theta_c,bias_c,theta_p,bias_p):
+    neg_ll_c = -log_likelihood(x, y, theta_c,bias_c)
+    neg_ll_p = -log_likelihood(x, y, theta_p,bias_p)
+    return neg_ll_c - neg_ll_p
+
+def lr_search_max_loss_pt(d,curr_model,target_model,y,x_lim_tuple,args,lr=1e-5,num_steps=3000,trials=10,optimizer = 'adam'):
+    # deply gradient descend strategy to search for apprximately max loss
+    # optimizer: 'gd': gradent descend; 'adagrad', 'adam'; empirically, adam seems to converge much faster than the other two
+    print("--- Testing with label ----:",y)
+    # point for logistic regression
+    if y == -1:
+        y_tmp = 0
+    else:
+        y_tmp = y
+    
+    # for reproducibility
+    np.random.seed(args.rand_seed)
+
+    theta_c = curr_model.coef_.reshape(-1)
+    bias_c = curr_model.intercept_
+    theta_p = target_model.coef_.reshape(-1)
+    bias_p = target_model.intercept_
+    x_min, x_max = x_lim_tuple
+
+    # setup the initial point for optimization and gradients
+    # note: ll = np.sum( y*prediction - np.log(1 + np.exp(prediction)) ) 
+    
+    # x = np.zeros(d)
+    # x1 = np.zeros(d)
+    # print("before: min max",np.amin(x),np.amax(x))
+    best_loss = -1e10
+    # best_loss1 = -1e10
+    for trial in range(trials):
+        # print("------ trial {}------".format(trial))
+        if args.dataset == 'dogfish':
+            x = np.array([random_sample(x_min[i],x_max[i]) for i in range(len(x_min))])
+            # x1 = np.array([random_sample(x_min[i],x_max[i]) for i in range(len(x_min))])
+            # print(x.shape,x1.shape)
+            # print(np.amax(x),np.amin(x))
+            # print(np.amax(x1),np.amin(x1))
+        else:
+            x = np.array([random_sample(x_min,x_max) for i in range(d)])
+            # x1 = np.array([random_sample(x_min,x_max) for i in range(d)])
+
+        if optimizer == 'adagrad':
+            # store the square of gradients
+            # print("Utilizing Adagrad Optimizer")
+            grads_squared = np.zeros(d)
+            initial_accumulator_value = 0.001
+            grads_squared.fill(initial_accumulator_value)
+            epsilon = 1e-7
+        elif optimizer == 'adam':
+            # print("Utilizing Adam Optimizer")
+            grads_first_moment = np.zeros(d)
+            grads_second_moment = np.zeros(d)
+            beta1 = 0.9
+            beta2 = 0.999
+            epsilon = 1e-8
+        
+        prev_loss = 1e10
+        for step in range(num_steps):
+            # if step == 0:
+            #     max_loss = compute_max_loss_diff(x, y_tmp, theta_c,bias_c,theta_p,bias_p)
+            #     print("(random) initial max loss value:",max_loss)
+            # predictions of current and target models
+            scores = np.dot(theta_c, x) + bias_c
+            prediction_c = sigmoid(scores[0])
+            scores = np.dot(theta_p, x) + bias_p
+            prediction_p = sigmoid(scores[0])  
+
+            # Update weights with gradient
+            output_error_signal_c = prediction_c - y_tmp 
+            output_error_signal_p = prediction_p - y_tmp 
+
+            # the gradient is with respect to negative log likelihood
+            # print(output_error_signal_c,theta_c.shape,x.shape)
+            gradient_c = np.dot(theta_c, output_error_signal_c)
+            gradient_p = np.dot(theta_p, output_error_signal_p)
+            grads = (gradient_c - gradient_p)
+            if optimizer == 'gd':
+                x += lr * grads
+            elif optimizer == 'adagrad':
+                """Weights update using adagrad.
+                grads2 = grads2 + grads**2
+                w' = w - lr * grads / (sqrt(grads2) + epsilon)
+                """
+                grads_squared = grads_squared + grads**2
+                x = x + lr * grads / (np.sqrt(grads_squared) + epsilon)
+            elif optimizer == 'adam':
+                """Weights update using Adam.
+                
+                g1 = beta1 * g1 + (1 - beta1) * grads
+                g2 = beta2 * g2 + (1 - beta2) * g2
+                g1_unbiased = g1 / (1 - beta1**time)
+                g2_unbiased = g2 / (1 - beta2**time)
+                w = w - lr * g1_unbiased / (sqrt(g2_unbiased) + epsilon)
+                """
+                time = step + 1
+                grads_first_moment = beta1 * grads_first_moment + \
+                                        (1. - beta1) * grads
+                grads_second_moment = beta2 * grads_second_moment + \
+                                        (1. - beta2) * grads**2
+                
+                grads_first_moment_unbiased = grads_first_moment / (1. - beta1**time)
+                grads_second_moment_unbiased = grads_second_moment / (1. - beta2**time)
+                
+                x = x + lr * grads_first_moment_unbiased /(np.sqrt(grads_second_moment_unbiased) + epsilon)
+            # print(y_tmp,output_error_signal_c, output_error_signal_p)
+            # projection step to ensure it is within bounded norm
+            x = np.clip(x,x_min,x_max)
+            
+            # print("added: min max",np.amin(lr * (gradient_c - gradient_p)),np.amax(lr * (gradient_c - gradient_p)))
+            # print("before: min max",np.amin(x),np.amax(x))
+
+            # max loss found so far
+            if args.dataset == 'adult':
+                # round the continuous values into discrete one to ensure it's meaningful
+                x_tmp = np.copy(x)
+                x_tmp[4:57] = np.rint(x[4:57]) 
+                max_loss = compute_max_loss_diff(x_tmp, y_tmp, theta_c,bias_c,theta_p,bias_p)
+                max_loss_real = compute_max_loss_diff(x, y_tmp, theta_c,bias_c,theta_p,bias_p)
+            else:
+                max_loss = compute_max_loss_diff(x, y_tmp, theta_c,bias_c,theta_p,bias_p)
+                max_loss_real = max_loss
+            
+            if best_loss < max_loss:
+                best_loss = max_loss
+                best_loss_real = max_loss_real
+                if args.dataset == 'adult':
+                    best_x = x_tmp
+                else:
+                    best_x = x
+
+            if np.abs(prev_loss - max_loss) < 1e-7:
+                # print("Enough convergence")
+                # print("steps: {}  max loss: {:.4f}  best_loss: {:.4f}".format(step+1, max_loss, best_loss))
+    
+                break
+
+            prev_loss = max_loss
+            # # also compute from target to curr to verify
+            # scores1 = np.dot(theta_c, x1) + bias_c
+            # prediction_c1 = sigmoid(scores1[0])
+            # scores1 = np.dot(theta_p, x1) + bias_p
+            # prediction_p1 = sigmoid(scores1[0])  
+
+            # output_error_signal_c1 = prediction_c1 - y_tmp
+            # output_error_signal_p1 = prediction_p1 - y_tmp
+
+            # gradient_c1 = np.dot(theta_c, output_error_signal_c1)
+            # gradient_p1 = np.dot(theta_p, output_error_signal_p1)
+
+            # x1 += lr * (gradient_p1 - gradient_c1)
+            # x1 = np.clip(x1,x_min,x_max)
+            # max_loss1 = compute_max_loss_diff(x1, y_tmp, theta_p,bias_p,theta_c,bias_c)
+            # if best_loss1 < max_loss1:
+            #     best_loss1 = max_loss1
+
+            # # Print log-likelihood every so often
+            # if (step+1) % 1000 == 0:
+            #     print("curr to target:",max_loss)
+                # print("target to curr:",max_loss1)
+
+        # print("selected best loss:",best_loss)
+        # print("selected best loss1:",best_loss1)
+
+    print("selected max loss with label {}: {}".format(y,best_loss))
+    # print(best_x)
+    
+    return best_loss, best_loss_real, np.transpose(np.array([best_x]))
+
 def search_max_loss_pt_contin(clean_model,poison_model,y,x_lim_tuple,args):
     theta_c = clean_model.coef_.reshape(-1)
     bias_c = clean_model.intercept_
     theta_p = poison_model.coef_.reshape(-1)
     bias_p = poison_model.intercept_
     x_min, x_max = x_lim_tuple
-
-    print("x_min and x_max:",x_min,x_max)
+    if args.dataset != "dogfish": 
+        print("x_min and x_max:",x_min,x_max)
     # cvx variables and params
     if args.dataset == "adult":
         # used for the binary constraints, however, the constraints are not used here
@@ -233,12 +413,13 @@ def search_max_loss_pt(clean_model,poison_model,y,x_lim_tuple,args):
     bias_p = poison_model.intercept_
     x_min, x_max = x_lim_tuple
 
-    print("min and max values of datapoint",x_min,x_max)
+    if args.dataset != "dogfish":
+        print("min and max values of datapoint",x_min,x_max)
 
     # print("*******model weights************")
     # print("clean model weights:",theta_c,bias_c)
     # print("poison model weights:",theta_p,bias_p)
-    print("x_min and x_max:",x_min,x_max)
+
     # cvx variables and params
     if args.dataset == "adult":
         # used for the binary constraints
@@ -408,9 +589,9 @@ def search_max_loss_pt(clean_model,poison_model,y,x_lim_tuple,args):
 
     # case 4: 0 for both cases, do not need to calculate.
     print(max_loss)
-    
-    assert np.amax(max_loss_x) <= (x_max + float(x_max)/100), "the data point {}, max value {}".format(max_loss_x,np.amax(max_loss_x))
-    assert np.amin(max_loss_x) >= (x_min - 0.00001), "the data point {}, min value {}".format(max_loss_x,np.amin(max_loss_x))
+    if args.dataset != "dogfish":
+        assert np.amax(max_loss_x) <= (x_max + float(x_max)/100), "the data point {}, max value {}".format(max_loss_x,np.amax(max_loss_x))
+        assert np.amin(max_loss_x) >= (x_min - 0.00001), "the data point {}, min value {}".format(max_loss_x,np.amin(max_loss_x))
 
     return max_loss, max_loss_x
 
@@ -470,7 +651,16 @@ def incre_online_learning(X_train,
                         kkt_tol_par,
                         subpop_data,
                         target_poisons):
-    
+    if args.model_type == 'lr':
+        print("please set the larning rate and number of optimization steps for logistic regression!")
+        if args.dataset == 'dogfish':
+            lr = 1e-1
+        elif args.dataset == 'adult':
+            lr = 0.1
+        elif args.dataset == 'mnist_17':
+            lr = 0.1
+        num_steps = 20000
+
     X_tar_poison = target_poisons["X_poison"]
     Y_tar_poison = target_poisons["Y_poison"]
     target_num_checker = len(X_tar_poison)
@@ -495,36 +685,61 @@ def incre_online_learning(X_train,
     target_total_loss = np.sum(np.maximum(1-margins, 0))
     # Search the current max loss difference point for initial model pairs
     classes = [-1,1]
-    best_loss = -1  
-    for cls1 in classes:
-        if cls1 == -1:
-            max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[1],args)
-            if best_loss < max_loss:
-                best_loss = max_loss
-                max_loss_x = max_x
-                max_loss_y = -1
-        else:
-            max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[0],args)
-            if best_loss < max_loss:
-                best_loss = max_loss
-                max_loss_x = max_x
-                max_loss_y = 1
-    # compute the conservative lower bound using relaxation for integer programming, for initial model pairs
-    if args.dataset == 'adult':
-        best_loss_real = -1 
+    best_loss = -1e10  
+    if args.model_type == 'svm':
         for cls1 in classes:
             if cls1 == -1:
-                max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[1],args)
-                if best_loss_real < max_loss_real:
-                    best_loss_real = max_loss_real
-                    max_loss_x_real = max_x_real
-                    max_loss_y_real = -1
+                max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[1],args)
+                if best_loss < max_loss:
+                    best_loss = max_loss
+                    max_loss_x = max_x
+                    max_loss_y = -1
             else:
-                max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[0],args)
-                if best_loss_real < max_loss_real:
+                max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[0],args)
+                if best_loss < max_loss:
+                    best_loss = max_loss
+                    max_loss_x = max_x
+                    max_loss_y = 1
+        # compute the conservative lower bound using relaxation for integer programming, for initial model pairs
+        if args.dataset == 'adult':
+            best_loss_real = -1 
+            for cls1 in classes:
+                if cls1 == -1:
+                    max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[1],args)
+                    if best_loss_real < max_loss_real:
+                        best_loss_real = max_loss_real
+                        max_loss_x_real = max_x_real
+                        max_loss_y_real = -1
+                else:
+                    max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[0],args)
+                    if best_loss_real < max_loss_real:
+                        best_loss_real = max_loss_real
+                        max_loss_x_real = max_x_real
+                        max_loss_y_real = 1
+
+    elif args.model_type == 'lr':
+        # compute the approximate max loss point
+        for cls1 in classes:
+            if cls1 == -1:
+                max_loss, max_loss_real, max_x = lr_search_max_loss_pt(X_train.shape[1],curr_model,target_model,cls1,x_lim_tuples[1],args,lr=lr,num_steps=num_steps)
+                if max_loss_real < max_loss:
+                    # this could happen for Adult dataset
+                    max_loss_real = max_loss
+                if best_loss < max_loss:
+                    best_loss = max_loss
                     best_loss_real = max_loss_real
-                    max_loss_x_real = max_x_real
-                    max_loss_y_real = 1
+                    max_loss_x = max_x
+                    max_loss_y = -1
+            else:
+                max_loss, max_loss_real, max_x = lr_search_max_loss_pt(X_train.shape[1],curr_model,target_model,cls1,x_lim_tuples[0],args,lr=lr,num_steps=num_steps)
+                if max_loss_real < max_loss:
+                    # this could happen for Adult dataset
+                    max_loss_real = max_loss
+                if best_loss < max_loss:
+                    best_loss = max_loss
+                    best_loss_real = max_loss_real
+                    max_loss_x = max_x
+                    max_loss_y = 1    
 
     if args.online_alg_criteria == "max_loss":
         current_tol_par = best_loss
@@ -532,7 +747,7 @@ def incre_online_learning(X_train,
         # use the euclidean distance as the stop criteria
         current_tol_par = np.sqrt(np.linalg.norm(target_model.coef_.reshape(-1)-theta_ol.reshape(-1))**2+(target_model.intercept_ - bias_ol[0])**2)
     print("tolerance parameter of initial model and target model:",current_tol_par)
-
+    
     tmp_x = np.copy(X_train)
     tmp_y= np.copy(y_train)
     lower_bound = 0
@@ -559,24 +774,32 @@ def incre_online_learning(X_train,
 
     # record the acc on whole pop and subpop for the first time
     trn_sub_acc1 = curr_model.score(trn_sub_x,trn_sub_y)
+    tst_sub_acc1 = curr_model.score(tst_sub_x,tst_sub_y)
     trn_nsub_acc.append(curr_model.score(trn_nsub_x,trn_nsub_y))
     trn_sub_acc.append(trn_sub_acc1)
     trn_acc.append(curr_model.score(X_train,y_train)) 
     tst_nsub_acc.append(curr_model.score(tst_nsub_x,tst_nsub_y))
-    tst_sub_acc.append(curr_model.score(tst_sub_x,tst_sub_y))
+    tst_sub_acc.append(tst_sub_acc1)
     tst_acc.append(curr_model.score(X_test,y_test)) 
 
     # print(current_tol_par, ol_lr_threshold, current_tol_par - ol_lr_threshold)
     # assert current_tol_par > ol_lr_threshold
+
     if args.fixed_budget <= 0:
-        stop_cond = current_tol_par > ol_lr_threshold    
+        if args.require_acc:    
+            stop_cond = tst_sub_acc1 > 1-args.err_threshold
+        else:
+            stop_cond = current_tol_par > ol_lr_threshold
     else:
         stop_cond = num_iter < args.fixed_budget
         print("runing with fixed number of poisoned points,",args.fixed_budget)
 
     while stop_cond:
     # while trn_sub_acc1 > 1-args.err_threshold:
+        print("***** num of poisons and target number of poisons *****:",num_iter,args.fixed_budget)
         print("Current train sub acc:",trn_sub_acc1)
+        print("Current test sub acc:",tst_sub_acc1)
+        
         print("Ideal Acc on sub:",1-args.err_threshold)
         print("Iteration Number:",num_iter)
         
@@ -595,7 +818,7 @@ def incre_online_learning(X_train,
         assert bias_ol == curr_model.intercept_
 
         max_loss_x = np.transpose(max_loss_x)
-        if args.dataset == 'adult':
+        if args.dataset == 'adult' and args.model_type == 'svm':
             # the relaxed version of the maximum loss diff point
             max_loss_x_real = np.transpose(max_loss_x_real)
 
@@ -697,46 +920,72 @@ def incre_online_learning(X_train,
 
         # record the acc on whole data and subpop
         trn_sub_acc1 = curr_model.score(trn_sub_x,trn_sub_y)
+        tst_sub_acc1 = curr_model.score(tst_sub_x,tst_sub_y)
+
         trn_nsub_acc.append(curr_model.score(trn_nsub_x,trn_nsub_y))
         trn_sub_acc.append(trn_sub_acc1)
         trn_acc.append(curr_model.score(X_train,y_train)) 
         tst_nsub_acc.append(curr_model.score(tst_nsub_x,tst_nsub_y))
-        tst_sub_acc.append(curr_model.score(tst_sub_x,tst_sub_y))
+        tst_sub_acc.append(tst_sub_acc1)
         tst_acc.append(curr_model.score(X_test,y_test)) 
 
         # search the max loss difference point with updated model pair
         best_loss = -1 
-        for cls1 in classes:
-            if cls1 == -1:
-                max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[1],args)
-                if best_loss < max_loss:
-                    best_loss = max_loss
-                    max_loss_x = max_x
-                    max_loss_y = -1
-            else:
-                max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[0],args)
-                if best_loss < max_loss:
-                    best_loss = max_loss
-                    max_loss_x = max_x
-                    max_loss_y = 1
-
-        # for adult dataset, compute the relaxed version of max loss point and give conservative lower bound
-        if args.dataset == 'adult':
-            print("Use relaxed version for max loss point search!")
-            best_loss_real = -1 
+        if args.model_type == 'svm':
             for cls1 in classes:
                 if cls1 == -1:
-                    max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[1],args)
-                    if best_loss_real < max_loss_real:
-                        best_loss_real = max_loss_real
-                        max_loss_x_real = max_x_real
-                        max_loss_y_real = -1
+                    max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[1],args)
+                    if best_loss < max_loss:
+                        best_loss = max_loss
+                        max_loss_x = max_x
+                        max_loss_y = -1
                 else:
-                    max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[0],args)
-                    if best_loss_real < max_loss_real:
+                    max_loss, max_x = search_max_loss_pt(curr_model,target_model,cls1,x_lim_tuples[0],args)
+                    if best_loss < max_loss:
+                        best_loss = max_loss
+                        max_loss_x = max_x
+                        max_loss_y = 1
+
+            # for adult dataset, compute the relaxed version of max loss point and give conservative lower bound
+            if args.dataset == 'adult':
+                print("Use relaxed version for max loss point search!")
+                best_loss_real = -1 
+                for cls1 in classes:
+                    if cls1 == -1:
+                        max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[1],args)
+                        if best_loss_real < max_loss_real:
+                            best_loss_real = max_loss_real
+                            max_loss_x_real = max_x_real
+                            max_loss_y_real = -1
+                    else:
+                        max_loss_real, max_x_real = search_max_loss_pt_contin(curr_model,target_model,cls1,x_lim_tuples[0],args)
+                        if best_loss_real < max_loss_real:
+                            best_loss_real = max_loss_real
+                            max_loss_x_real = max_x_real
+                            max_loss_y_real = 1
+        elif args.model_type == 'lr':
+            # compute the approximate max loss point
+            for cls1 in classes:
+                if cls1 == -1:
+                    max_loss, max_loss_real, max_x = lr_search_max_loss_pt(X_train.shape[1],curr_model,target_model,cls1,x_lim_tuples[1],args,lr=lr,num_steps=num_steps)
+                    if max_loss_real < max_loss:
+                        # this could happen for Adult dataset
+                        max_loss_real = max_loss
+                    if best_loss < max_loss:
+                        best_loss = max_loss
                         best_loss_real = max_loss_real
-                        max_loss_x_real = max_x_real
-                        max_loss_y_real = 1
+                        max_loss_x = max_x
+                        max_loss_y = -1
+                else:
+                    max_loss, max_loss_real, max_x = lr_search_max_loss_pt(X_train.shape[1],curr_model,target_model,cls1,x_lim_tuples[0],args,lr=lr,num_steps=num_steps)
+                    if max_loss_real < max_loss:
+                        # this could happen for Adult dataset
+                        max_loss_real = max_loss
+                    if best_loss < max_loss:
+                        best_loss = max_loss
+                        best_loss_real = max_loss_real
+                        max_loss_x = max_x
+                        max_loss_y = 1                
     
         if args.online_alg_criteria == "max_loss":
             current_tol_par = best_loss
@@ -749,10 +998,12 @@ def incre_online_learning(X_train,
 
         # stop condition check
         if args.fixed_budget <= 0:
-            stop_cond = current_tol_par > ol_lr_threshold    
+            if args.require_acc:    
+                stop_cond = tst_sub_acc1 > 1-args.err_threshold
+            else:
+                stop_cond = current_tol_par > ol_lr_threshold  
         else:
             stop_cond = num_iter < args.fixed_budget
-
     # complete the last iteration info of the our attack
     margins = y_train*(X_train.dot(theta_ol.reshape(-1)) + bias_ol)
     current_total_loss = np.sum(np.maximum(1-margins, 0))

@@ -16,14 +16,44 @@ import datasets
 
 import cvxpy as cvx
 
-def sigmoid(x):
+def random_sample(low,high):
+    return (high-low) * np.random.random_sample() + low
+
+def sigmoid_orig(x):
     return 1 / (1 + np.exp(-x))
+
+def sigmoid(scores):
+    return 1 / (1 + np.exp(-scores))
 
 def sigmoid_grad(x):
     a = sigmoid(x)
     return a * (1 - a)
 
-def logistic_grad(w, b, X, Y):
+def logistic_grad(w,b,X,Y_tmp):
+    print(w.shape,b.shape,X.shape,Y_tmp.shape)
+    # this used to compute the average gradient over a training set
+    if min(Y_tmp) < 0:
+        # need to convert "-1" label into "0"
+        Y = (Y_tmp+1)/2
+        print("converted")
+    print(np.amin(Y),np.amax(Y))
+    # scores = np.dot(X, w) + b
+    scores = X.dot(w) + b
+
+    predictions = sigmoid(scores)
+
+    output_error_signal = Y - predictions
+
+    grad_w = np.dot(X.T, output_error_signal)/X.shape[0]
+    # grad_w = np.sum(
+    #     X.dot(output_error_signal),
+    #     axis=0)/X.shape[0]
+    grad_b = np.sum(
+        output_error_signal)/X.shape[0]
+
+    return grad_w, grad_b
+
+def logistic_grad_orig(w, b, X, Y):
     margins = Y * (X.dot(w) + b)
     if sparse.issparse(X):
         SMY = -sigmoid(-margins).reshape((-1, 1)) * Y.reshape((-1, 1))
@@ -39,7 +69,12 @@ def logistic_grad(w, b, X, Y):
         axis=0)
     return grad_w, grad_b
 
-def indiv_log_losses(w,b,X,Y,eps=1e-15):
+def indiv_log_losses(w,b,X,Y):
+    scores = np.dot(X, w) + b
+    ll = Y*scores - np.log(1 + np.exp(scores))
+    return -ll
+
+def indiv_log_losses_orig(w,b,X,Y,eps=1e-15):
     pos_proba = 1/(1+np.exp(-(X.dot(w) + b)))
     pos_proba = np.clip(pos_proba, eps, 1 - eps)
     return -((int((Y+1)/2)) * np.log(pos_proba) + (1-int((Y+1)/2)) * np.log(1-pos_proba))
@@ -280,6 +315,7 @@ class Minimizer(object):
 
 # Suya slightly modified it and the default setting does not constrained by l2 defence
 # and assumed all features of adult are continuous and in range [0,1]
+
 class TwoClassKKT(object):
     def __init__(
         self,
@@ -566,11 +602,11 @@ class TwoClassKKT(object):
         else:
             best_x_pos = np.array(self.cvx_x_pos.value)
             best_x_neg = np.array(self.cvx_x_neg.value)
-        
-        assert np.amax(best_x_pos) <= (self.x_pos_max + float(self.x_pos_max)/100)
-        assert np.amin(best_x_pos) >= (self.x_pos_min - np.abs(float(self.x_pos_min))/100)
-        assert np.amax(best_x_neg) <= (self.x_neg_max + float(self.x_neg_max)/100)
-        assert np.amin(best_x_neg) >= (self.x_neg_min - np.abs(float(self.x_neg_min))/100)
+        if self.dataset != "dogfish":
+            assert np.amax(best_x_pos) <= (self.x_pos_max + float(self.x_pos_max)/100)
+            assert np.amin(best_x_pos) >= (self.x_pos_min - np.abs(float(self.x_pos_min))/100)
+            assert np.amax(best_x_neg) <= (self.x_neg_max + float(self.x_neg_max)/100)
+            assert np.amin(best_x_neg) >= (self.x_neg_min - np.abs(float(self.x_neg_min))/100)
 
         # #plan for handling integers by relaxing and then rounding to largest value 
         # if self.dataset == 'adult':

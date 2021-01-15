@@ -7,16 +7,19 @@ import numpy as np
 
 from sklearn import linear_model, svm
 # from utils import *
-from utils import svm_model, calculate_loss, dist_to_boundary
+from utils import svm_model, logistic_model, calculate_loss, dist_to_boundary
 import pickle
 import argparse
 from datasets import load_dataset
 import os
+import scipy
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', default='adult',help="three datasets: mnist_17, adult, 2d_toy")
+parser.add_argument('--model_type',default='lr',help='victim model type: SVM or rlogistic regression')
+parser.add_argument('--dataset', default='adult',help="three datasets: mnist_17, adult, 2d_toy, dogfish")
 parser.add_argument('--weight_decay',default=0.09, type=float, help='weight decay for regularizers')
 parser.add_argument('--improved',action="store_true",help='if true, target classifier is obtained through improved process')
+parser.add_argument('--subpop',action="store_true",help='if true, subpopulation attack will be performed')
 
 args = parser.parse_args()
 
@@ -34,12 +37,22 @@ elif args.dataset == "2d_toy":
     # this is only to help test the optimzation framework
     # for generating the target classifier
     subpop = True
+elif args.dataset == "dogfish":
+    subpop = args.subpop
+    args.weight_decay = 1.1
+
+if args.model_type == 'svm':
+    print("chosen model: svm")
+    ScikitModel = svm_model
+else:
+    print("chosen model: lr")
+    ScikitModel = logistic_model
 
 # reduce number of searches on target classifier
 prune_theta = True
 
 dataset_name = args.dataset
-assert dataset_name in ['adult','mnist_17','2d_toy']
+assert dataset_name in ['adult','mnist_17','2d_toy','dogfish']
 
 # load data
 X_train, Y_train, X_test, Y_test = load_dataset(dataset_name)
@@ -71,7 +84,6 @@ fit_intercept = True
 #     abs_vals = np.abs(np.dot(data,theta) + bias)
 #     return abs_vals/(np.linalg.norm(theta,ord = 2))
 
-ScikitModel = svm_model
 C = 1.0 / (X_train.shape[0] * args.weight_decay)
 model = ScikitModel(
     C=C,
@@ -90,19 +102,28 @@ test_acc = model.score(X_test,Y_test)
 print(orig_theta.shape,X_train.shape,orig_bias.shape,Y_train.shape)
 margins = Y_train*(X_train.dot(orig_theta) + orig_bias)
 train_loss, train_err = calculate_loss(margins)
-print("train_acc:{}, train loss:{}, train error:{}".format(train_acc,train_loss,train_err))
+clean_total_train_loss = train_loss*X_train.shape[0]
+print("train_acc:{}, train loss:{}, train error:{}".format(train_acc,clean_total_train_loss,train_err))
 # test margins and loss
 margins = Y_test*(X_test.dot(orig_theta) + orig_bias)
 test_loss, test_err = calculate_loss(margins)
-print("test_acc:{}, test loss:{}, test error:{}".format(test_acc,test_loss,test_err))
+clean_total_test_loss = test_loss*X_test.shape[0]
+print("test_acc:{}, test loss:{}, test error:{}".format(test_acc,clean_total_test_loss,test_err))
 
 if not subpop:
     ym = (-1)*Y_test
-    if args.dataset == 'mnist_17':
-        valid_theta_errs = [0.05,0.1,0.15]
+    if args.dataset in ['mnist_17','dogfish']:
         # loss percentile and repeated points, used for indiscriminative attack
-        quantile_tape = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55]
-        rep_tape = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30]
+        if args.dataset == 'mnist_17':
+            valid_theta_errs = [0.05,0.1,0.15]
+        else:
+            valid_theta_errs = [0.1,0.2,0.3,0.4]
+        quantile_tape = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55,0.6]
+        rep_tape = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30,50,60]
+        # valid_theta_errs = [0.5,0.6,0.7,0.8]
+        # quantile_tape = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55,0.6,0.7,0.8,0.9]
+        # rep_tape = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30,40,60,70,80,90,100]
+
     elif args.dataset == '2d_toy':
         valid_theta_errs = [0.1,0.15]
         # loss percentile and repeated points, used for indiscriminative attack
@@ -274,27 +295,28 @@ if not subpop:
             print("best target classifier with target error rate {}".format(valid_theta_err))
             print("Test Acc of best theta:",1-best_test_err)
             print("Train Loss of best theta",(best_train_loss)*X_train.shape[0])
+            print("Total Train Loss of Clean Model",clean_total_train_loss)
             print("Num of Poisoned Points used",best_num_poison)
 
             # choose the one with least train error
-            if not os.path.isdir('files/target_classifiers/{}'.format(dataset_name)):
-                os.makedirs('files/target_classifiers/{}'.format(dataset_name))
+            if not os.path.isdir('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type)):
+                os.makedirs('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type))
             if args.improved:
-                file_all = open('files/target_classifiers/{}/improved_best_theta_whole_err-{}'.format(dataset_name,valid_theta_err), 'wb')
+                file_all = open('files/target_classifiers/{}/{}/improved_best_theta_whole_err-{}'.format(dataset_name,args.model_type,valid_theta_err), 'wb')
             else:
-                file_all = open('files/target_classifiers/{}/orig_best_theta_whole_err-{}'.format(dataset_name,valid_theta_err), 'wb')
+                file_all = open('files/target_classifiers/{}/{}/orig_best_theta_whole_err-{}'.format(dataset_name,args.model_type,valid_theta_err), 'wb')
             # dump information to that file
             pickle.dump(data_best, file_all,protocol=2)
             file_all.close()
     else:
-        if not os.path.isdir('files/target_classifiers/{}'.format(dataset_name)):
-            os.makedirs('files/target_classifiers/{}'.format(dataset_name))
+        if not os.path.isdir('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type)):
+            os.makedirs('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type))
         if args.improved:
-            file_all = open('files/target_classifiers/{}/improved_thetas_whole'.format(dataset_name), 'wb')
-            file_pruned = open('files/target_classifiers/{}/improved_thetas_whole_pruned'.format(dataset_name), 'wb')
+            file_all = open('files/target_classifiers/{}/{}/improved_thetas_whole'.format(dataset_name,args.model_type), 'wb')
+            file_pruned = open('files/target_classifiers/{}/{}/improved_thetas_whole_pruned'.format(dataset_name,args.model_type), 'wb')
         else:    
-            file_all = open('files/target_classifiers/{}/orig_thetas_whole'.format(dataset_name), 'wb')
-            file_pruned = open('files/target_classifiers/{}/orig_thetas_whole_pruned'.format(dataset_name), 'wb')
+            file_all = open('files/target_classifiers/{}/{}/orig_thetas_whole'.format(dataset_name,args.model_type), 'wb')
+            file_pruned = open('files/target_classifiers/{}/{}/orig_thetas_whole_pruned'.format(dataset_name,args.model_type), 'wb')
 
         # dump information to that file
         pickle.dump(data_all, file_all,protocol=2)
@@ -308,8 +330,17 @@ elif args.improved:
     # generation process for subpop: directly flip the labels of subpop
     # choose 5 with highest original acc
     from sklearn import cluster
-    num_clusters = 20
-    pois_rates = [0.03,0.05,0.1,0.15,0.2,0.3,0.4,0.5]
+    if dataset_name == "dogfish":
+        num_clusters = 3
+    elif dataset_name == "mnist_17":
+        num_clusters = 20
+    elif args.dataset == '2d_toy':
+        num_clusters = 4
+    else:
+        print("please specify the num of clusters for remaining datasets!")
+        sys.exit(0)
+
+    pois_rates = [0.03,0.05,0.1,0.15,0.2,0.3,0.4,0.5,0.7,0.9,1.0,1.1,1.2,1.3,1.4,1.5]
 
     cls_fname = 'files/data/{}_trn_cluster_labels.txt'.format(dataset_name)
     if os.path.isfile(cls_fname):
@@ -317,10 +348,6 @@ elif args.improved:
         cls_fname = 'files/data/{}_tst_cluster_labels.txt'.format(dataset_name)
         tst_km = np.loadtxt(cls_fname)
     else:
-        if args.dataset == 'adult':
-            num_clusters = 20
-        elif args.dataset == '2d_toy':
-            num_clusters = 4
         km = cluster.KMeans(n_clusters=num_clusters,random_state = 0)
         km.fit(X_train)
         trn_km = km.labels_
@@ -337,10 +364,32 @@ elif args.improved:
         cl_ind, cl_ct = cl_inds[i], cl_cts[i]
         print("cluster ID and Size:",cl_ind,cl_ct)         
         # indices of points belong to cluster
-        tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))
-        trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))
-        tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))
-        trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))
+        if dataset_name == "adult":
+            tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))
+            trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))
+            tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))
+            trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))
+        else:
+            # need to first figure out the majority class and then only consider subpopulation with 
+            # consistent major label on train and test data 
+            tst_sbcl = np.where(tst_km==cl_ind)
+            trn_sbcl = np.where(trn_km==cl_ind)
+            Y_train_sel, Y_test_sel =  Y_train[trn_sbcl], Y_test[tst_sbcl]
+            
+            mode_tst = scipy.stats.mode(Y_test_sel)
+            mode_trn = scipy.stats.mode(Y_train_sel) 
+            print("selected major labels in test and train data:",mode_trn,mode_tst,len(Y_train_sel),len(Y_test_sel))
+            print(type(mode_trn))
+            major_lab_trn = mode_trn.mode[0]
+            major_lab_tst = mode_tst.mode[0]
+            # print(major_lab_trn,major_lab_tst)
+
+            assert major_lab_trn ==  major_lab_tst, "inconsistent in labels between test and train subpop"
+            print("selected major label is:",major_lab_trn)
+            tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == major_lab_tst))
+            trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == major_lab_trn))
+            tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != major_lab_tst))
+            trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != major_lab_trn))   
         
         # get the corresponding points in the dataset
         tst_sub_x, tst_sub_y = X_test[tst_sbcl], Y_test[tst_sbcl]
@@ -355,12 +404,13 @@ elif args.improved:
         print('Clean Train Collat Acc : %.3f' % model.score(trn_nsub_x,trn_nsub_y))
         print('Clean Test Target Acc : %.3f' % tst_sub_acc)
         print('Clean Test Collat Acc : %.3f' % model.score(tst_nsub_x, tst_nsub_y))
+        print("shape of subpopulations",trn_sub_x.shape,trn_nsub_x.shape,tst_sub_x.shape,tst_nsub_x.shape)
         trn_sub_accs.append(trn_sub_acc)
 
     print(cl_inds, cl_cts)
     # print(tst_sub_accs)
     # sort the subpop based on tst acc and choose 5 highest ones
-    if args.dataset == 'adult':
+    if args.dataset in ['adult','dogfish']:
         highest_5_inds = np.argsort(trn_sub_accs)[-3:]
     elif args.dataset == '2d_toy':
         highest_5_inds = np.argsort(trn_sub_accs)[-4:]
@@ -371,7 +421,13 @@ elif args.improved:
     # save the selected subpop info
     cls_fname = 'files/data/{}_selected_subpops.txt'.format(dataset_name)
     np.savetxt(cls_fname,np.array([cl_inds,cl_cts]))
-    valid_theta_errs = [1.0]
+
+    if dataset_name == 'dogfish':
+        valid_theta_errs = [0.9]
+    else:
+        valid_theta_errs = [1.0]
+
+    choose_best = True
 
     for valid_theta_err in valid_theta_errs:
         print("#---------Selected Subpops------#")
@@ -384,12 +440,36 @@ elif args.improved:
             test_errs = []
             collat_errs = []         
             # best_collat_acc = 0
-            min_train_loss = 1e10
+            if choose_best:
+                min_train_loss = 1e10
+            else:
+                min_train_loss = 0
             # indices of points belong to cluster
-            tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))[0]
-            trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))[0]
-            tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))[0]
-            trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))[0]
+            if dataset_name == "adult":
+                tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))
+                trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))
+                tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))
+                trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))
+            else:
+                # need to first figure out the majority class and then only consider subpopulation with 
+                # consistent major label on train and test data 
+                tst_sbcl = np.where(tst_km==cl_ind)
+                trn_sbcl = np.where(trn_km==cl_ind)
+                Y_train_sel, Y_test_sel =  Y_train[trn_sbcl], Y_test[tst_sbcl]
+                
+                mode_tst = scipy.stats.mode(Y_test_sel)
+                mode_trn = scipy.stats.mode(Y_train_sel) 
+                print("selected major labels in test and train data:",mode_trn,mode_tst,len(Y_train_sel),len(Y_test_sel))
+                major_lab_trn = mode_trn.mode[0]
+                major_lab_tst = mode_tst.mode[0]
+                # print(major_lab_trn,major_lab_tst)
+
+                assert major_lab_trn ==  major_lab_tst, "inconsistent in labels between test and train subpop"
+                print("selected major label is:",major_lab_trn)
+                tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == major_lab_tst))[0]
+                trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == major_lab_trn))[0]
+                tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != major_lab_tst))[0]
+                trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != major_lab_trn))[0]     
             
             # get the corresponding points in the dataset
             tst_sub_x, tst_sub_y = X_test[tst_sbcl], Y_test[tst_sbcl]
@@ -398,16 +478,23 @@ elif args.improved:
             trn_nsub_x, trn_nsub_y = X_train[trn_non_sbcl], Y_train[trn_non_sbcl]  
             tst_sub_acc = model.score(tst_sub_x, tst_sub_y)
             # make sure subpop is from class -1
-            assert (tst_sub_y == -1).all()
-            assert (trn_sub_y == -1).all()
+            if dataset_name == 'adult':
+                assert (tst_sub_y == -1).all()
+                assert (trn_sub_y == -1).all()
+            else:
+                assert (tst_sub_y == major_lab_tst).all()
+                assert (trn_sub_y == major_lab_tst).all()
             # check the target and collateral damage info
             print("----------Subpop Indx: {}------".format(cl_ind))
             print('Clean Train Target Acc : %.3f' % model.score(trn_sub_x, trn_sub_y))
             print('Clean Train Collat Acc : %.3f' % model.score(trn_nsub_x,trn_nsub_y))
             print('Clean Test Target Acc : %.3f' % tst_sub_acc)
             print('Clean Test Collat Acc : %.3f' % model.score(tst_nsub_x, tst_nsub_y))
+            print("shape of subpopulations",trn_sub_x.shape,trn_nsub_x.shape,tst_sub_x.shape,tst_nsub_x.shape)
             # dist to decision boundary
             trn_sub_dist = dist_to_boundary(model.coef_.reshape(-1),model.intercept_,trn_sub_x)
+
+            
             # try target generated with different ratios
             for kk in range(len(pois_rates)):
                 pois_rate = pois_rates[kk]
@@ -426,6 +513,7 @@ elif args.improved:
                     whole_y = np.concatenate((y_train_copy,pois_y),axis=0)
                     whole_x = np.concatenate((x_train_copy,pois_x),axis=0)
                 else:
+                    print(trn_sbcl.shape)
                     replace_idx = trn_sbcl[pois_inds]
                     y_train_copy[replace_idx] = -y_train_copy[replace_idx]
                     whole_x, whole_y = x_train_copy, y_train_copy
@@ -451,6 +539,7 @@ elif args.improved:
                 print('Train Collat Acc : %.3f' % trn_nsub_acc)
                 print('Test Target Acc : %.3f' % tst_sub_acc)
                 print('Test Collat Acc : %.3f' % model_p.score(tst_nsub_x, tst_nsub_y))
+
                 # theta and bias of the model
                 target_theta, target_bias = model_p.coef_.reshape(-1), model_p.intercept_
 
@@ -467,14 +556,24 @@ elif args.improved:
                 #         best_bias = target_bias[0]
                 #         print("updated best collat train acc is:",trn_nsub_acc)
                 
-                # choose best valid classifier with lowest loss on clean data 
-                if tst_sub_acc == 0:
-                    if train_loss < min_train_loss:
+                # choose best valid classifier with lowest loss on clean data
+                acc_threshold = 1 - valid_theta_err 
+
+                if tst_sub_acc <= acc_threshold:
+                    if choose_best:
+                        stop_cond = train_loss < min_train_loss
+                    else:
+                        stop_cond = train_loss > min_train_loss
+
+                    if stop_cond:
                         min_train_loss = train_loss
                         best_theta = target_theta
                         best_bias = target_bias[0]
                         best_num_poisons = pois_ct
-                        print("updated lowest train loss is:",train_loss)
+                        if choose_best:
+                            print("updated lowest train loss is:",train_loss)
+                        else:    
+                            print("updated highest train loss is:",train_loss)
 
             thetas = np.array(thetas)
             biases = np.array(biases)
@@ -495,15 +594,15 @@ elif args.improved:
             print("Num of Poisons:",best_num_poisons)    
             # save all the target thetas
             if select_best:
-                if not os.path.isdir('files/target_classifiers/{}'.format(dataset_name)):
-                    os.makedirs('files/target_classifiers/{}'.format(dataset_name))
-                file_all = open('files/target_classifiers/{}/improved_best_theta_subpop_{}_err-{}'.format(dataset_name,int(cl_ind),valid_theta_err), 'wb')
+                if not os.path.isdir('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type)):
+                    os.makedirs('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type))
+                file_all = open('files/target_classifiers/{}/{}/improved_best_theta_subpop_{}_err-{}'.format(dataset_name,args.model_type,int(cl_ind),valid_theta_err), 'wb')
                 pickle.dump(data_best, file_all,protocol=2)
                 file_all.close()
             else:
-                if not os.path.isdir('files/target_classifiers/{}'.format(dataset_name)):
-                    os.makedirs('files/target_classifiers/{}'.format(dataset_name))
-                file_all = open('files/target_classifiers/{}/improved_thetas_subpop_{}_err-{}'.format(dataset_name,int(cl_ind),valid_theta_err), 'wb')
+                if not os.path.isdir('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type)):
+                    os.makedirs('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type))
+                file_all = open('files/target_classifiers/{}/{}/improved_thetas_subpop_{}_err-{}'.format(dataset_name,args.model_type,int(cl_ind),valid_theta_err), 'wb')
                 pickle.dump(data_all, file_all,protocol=2)
                 file_all.close()
 else:
@@ -511,22 +610,29 @@ else:
     # generation process for subpop: directly flip the labels of subpop
     # choose 5 with highest original acc
     from sklearn import cluster
-    num_clusters = 20
-
+    if dataset_name == "dogfish":
+        num_clusters = 3
+    elif dataset_name == "mnist_17":
+        num_clusters = 20
+    elif args.dataset == 'adult':
+        num_clusters = 20
+    elif args.dataset == '2d_toy':
+        num_clusters = 4
+    else:
+        print("please specify the num of clusters for remaining datasets!")
+        sys.exit(0)
     cls_fname = 'files/data/{}_trn_cluster_labels.txt'.format(dataset_name)
     if os.path.isfile(cls_fname):
         trn_km = np.loadtxt(cls_fname)
         cls_fname = 'files/data/{}_tst_cluster_labels.txt'.format(dataset_name)
         tst_km = np.loadtxt(cls_fname)
     else:
-        if args.dataset == 'adult':
-            num_clusters = 20
-        elif args.dataset == '2d_toy':
-            num_clusters = 4
         km = cluster.KMeans(n_clusters=num_clusters,random_state = 0)
         km.fit(X_train)
         trn_km = km.labels_
         tst_km = km.predict(X_test)
+        print(tst_km)
+        
         # save the clustering info to ensure everything is reproducible
         cls_fname = 'files/data/{}_trn_cluster_labels.txt'.format(dataset_name)
         np.savetxt(cls_fname,trn_km)
@@ -539,11 +645,33 @@ else:
         cl_ind, cl_ct = cl_inds[i], cl_cts[i]
         print("cluster ID and Size:",cl_ind,cl_ct)         
         # indices of points belong to cluster
-        tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))
-        trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))
-        tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))
-        trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))
-        
+        if dataset_name == "adult":
+            tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))
+            trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))
+            tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))
+            trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))
+        else:
+            # need to first figure out the majority class and then only consider subpopulation with 
+            # consistent major label on train and test data 
+            tst_sbcl = np.where(tst_km==cl_ind)
+            trn_sbcl = np.where(trn_km==cl_ind)
+            Y_train_sel, Y_test_sel =  Y_train[trn_sbcl], Y_test[tst_sbcl]
+            
+            mode_tst = scipy.stats.mode(Y_test_sel)
+            mode_trn = scipy.stats.mode(Y_train_sel) 
+            print("selected major labels in test and train data:",mode_trn,mode_tst,len(Y_train_sel),len(Y_test_sel))
+            print(type(mode_trn))
+            major_lab_trn = mode_trn.mode[0]
+            major_lab_tst = mode_tst.mode[0]
+            # print(major_lab_trn,major_lab_tst)
+
+            assert major_lab_trn ==  major_lab_tst, "inconsistent in labels between test and train subpop"
+            print("selected major label is:",major_lab_trn)
+            tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == major_lab_tst))
+            trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == major_lab_trn))
+            tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != major_lab_tst))
+            trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != major_lab_trn))            
+
         # get the corresponding points in the dataset
         tst_sub_x, tst_sub_y = X_test[tst_sbcl], Y_test[tst_sbcl]
         tst_nsub_x, tst_nsub_y = X_test[tst_non_sbcl], Y_test[tst_non_sbcl]
@@ -557,12 +685,13 @@ else:
         print('Clean Train Collat Acc : %.3f' % model.score(trn_nsub_x,trn_nsub_y))
         print('Clean Test Target Acc : %.3f' % tst_sub_acc)
         print('Clean Test Collat Acc : %.3f' % model.score(tst_nsub_x, tst_nsub_y))
+        print("shape of subpopulations",trn_sub_x.shape,trn_nsub_x.shape,tst_sub_x.shape,tst_nsub_x.shape)
         trn_sub_accs.append(trn_sub_acc)
 
     print(cl_inds, cl_cts)
     # print(tst_sub_accs)
     # sort the subpop based on tst acc and choose 5 highest ones
-    if args.dataset == 'adult':
+    if args.dataset in ['adult','dogfish']:
         highest_5_inds = np.argsort(trn_sub_accs)[-3:]
     elif args.dataset == '2d_toy':
         highest_5_inds = np.argsort(trn_sub_accs)[-4:]
@@ -573,12 +702,19 @@ else:
     # save the selected subpop info
     cls_fname = 'files/data/{}_selected_subpops.txt'.format(dataset_name)
     np.savetxt(cls_fname,np.array([cl_inds,cl_cts]))
-    valid_theta_errs = [1.0]
 
+    if dataset_name == 'dogfish':
+        valid_theta_errs = [0.9]
+    else:
+        valid_theta_errs = [1.0]
     # repitition of the points
-    quantile_tape = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55,0.8]
-    rep_tape = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30,40,50,80]
- 
+    if dataset_name != "dogfish":
+        quantile_tape = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55,0.8,1.0]
+        rep_tape = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30,40,50,80,100]
+    else:
+        quantile_tape = [0.40, 0.45, 0.50, 0.55,0.8,1.0]
+        rep_tape = [1, 2, 3, 5, 8, 10, 12, 15, 20, 25, 30,40,50,80,100]
+
     for valid_theta_err in valid_theta_errs:
         print("#---------Selected Subpops------#")
         for i in range(len(cl_cts)):
@@ -592,10 +728,31 @@ else:
             # best_collat_acc = 0
             min_train_loss = 1e10
             # indices of points belong to cluster
-            tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))[0]
-            trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))[0]
-            tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))[0]
-            trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))[0]
+            if dataset_name == "adult":
+                tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == -1))
+                trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == -1))
+                tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != -1))
+                trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != -1))
+            else:
+                # need to first figure out the majority class and then only consider subpopulation with 
+                # consistent major label on train and test data 
+                tst_sbcl = np.where(tst_km==cl_ind)
+                trn_sbcl = np.where(trn_km==cl_ind)
+                Y_train_sel, Y_test_sel =  Y_train[trn_sbcl], Y_test[tst_sbcl]
+                
+                mode_tst = scipy.stats.mode(Y_test_sel)
+                mode_trn = scipy.stats.mode(Y_train_sel) 
+                print("selected major labels in test and train data:",mode_trn,mode_tst,len(Y_train_sel),len(Y_test_sel))
+                major_lab_trn = mode_trn.mode[0]
+                major_lab_tst = mode_tst.mode[0]
+                # print(major_lab_trn,major_lab_tst)
+
+                assert major_lab_trn ==  major_lab_tst, "inconsistent in labels between test and train subpop"
+                print("selected major label is:",major_lab_trn)
+                tst_sbcl = np.where(np.logical_and(tst_km==cl_ind,Y_test == major_lab_tst))
+                trn_sbcl = np.where(np.logical_and(trn_km==cl_ind,Y_train == major_lab_trn))
+                tst_non_sbcl = np.where(np.logical_or(tst_km!=cl_ind,Y_test != major_lab_tst))
+                trn_non_sbcl = np.where(np.logical_or(trn_km!=cl_ind,Y_train != major_lab_trn))   
             
             # get the corresponding points in the dataset
             tst_sub_x, tst_sub_y = X_test[tst_sbcl], Y_test[tst_sbcl]
@@ -604,14 +761,20 @@ else:
             trn_nsub_x, trn_nsub_y = X_train[trn_non_sbcl], Y_train[trn_non_sbcl]  
             tst_sub_acc = model.score(tst_sub_x, tst_sub_y)
             # make sure subpop is from class -1
-            assert (tst_sub_y == -1).all()
-            assert (trn_sub_y == -1).all()
+            if dataset_name == 'adult':
+                assert (tst_sub_y == -1).all()
+                assert (trn_sub_y == -1).all()
+            else:
+                assert (tst_sub_y == major_lab_tst).all()
+                assert (trn_sub_y == major_lab_tst).all()
+
             # check the target and collateral damage info
             print("----------Subpop Indx: {}------".format(cl_ind))
             print('Clean Train Target Acc : %.3f' % model.score(trn_sub_x, trn_sub_y))
             print('Clean Train Collat Acc : %.3f' % model.score(trn_nsub_x,trn_nsub_y))
             print('Clean Test Target Acc : %.3f' % tst_sub_acc)
             print('Clean Test Collat Acc : %.3f' % model.score(tst_nsub_x, tst_nsub_y))
+            print("shape of subpopulations",trn_sub_x.shape,trn_nsub_x.shape,tst_sub_x.shape,tst_nsub_x.shape)
 
             # find the loss percentile
             clean_margins = tst_sub_y*(tst_sub_x.dot(orig_theta) + orig_bias)
@@ -664,6 +827,7 @@ else:
                     print('Train Collat Acc : %.3f' % trn_nsub_acc)
                     print('Test Target Acc : %.3f' % tst_sub_acc)
                     print('Test Collat Acc : %.3f' % tst_nsub_acc)
+
                     # theta and bias of the model
                     target_theta, target_bias = model_p.coef_.reshape(-1), model_p.intercept_
 
@@ -695,7 +859,10 @@ else:
                     
                     # choose best valid classifier with lowest loss on clean data 
                     assert len(Y_tar) == len(X_train_p) - len(X_train)
-                    if tst_sub_acc == 0:
+
+                    acc_threshold = 1 - valid_theta_err
+
+                    if tst_sub_acc <= acc_threshold:
                         if train_loss < min_train_loss:
                             min_train_loss = train_loss
                             best_theta = np.copy(target_theta)
@@ -748,14 +915,14 @@ else:
 
             # save all the target thetas
             if select_best:
-                if not os.path.isdir('files/target_classifiers/{}'.format(dataset_name)):
-                    os.makedirs('files/target_classifiers/{}'.format(dataset_name))
-                file_all = open('files/target_classifiers/{}/orig_best_theta_subpop_{}_err-{}'.format(dataset_name,int(cl_ind),valid_theta_err), 'wb')
+                if not os.path.isdir('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type)):
+                    os.makedirs('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type))
+                file_all = open('files/target_classifiers/{}/{}/orig_best_theta_subpop_{}_err-{}'.format(dataset_name,args.model_type,int(cl_ind),valid_theta_err), 'wb')
                 pickle.dump(data_best, file_all,protocol=2)
                 file_all.close()
             else:
-                if not os.path.isdir('files/target_classifiers/{}'.format(dataset_name)):
-                    os.makedirs('files/target_classifiers/{}'.format(dataset_name))
-                file_all = open('files/target_classifiers/{}/orig_thetas_subpop_{}_err-{}'.format(dataset_name,int(cl_ind),valid_theta_err), 'wb')
+                if not os.path.isdir('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type)):
+                    os.makedirs('files/target_classifiers/{}/{}'.format(dataset_name,args.model_type))
+                file_all = open('files/target_classifiers/{}/{}/orig_thetas_subpop_{}_err-{}'.format(dataset_name,args.model_type,int(cl_ind),valid_theta_err), 'wb')
                 pickle.dump(data_all, file_all,protocol=2)
                 file_all.close()

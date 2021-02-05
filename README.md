@@ -1,6 +1,5 @@
 # About
-This repository maintains code for the paper [Model-Targeted Poisoning Attacks: Provable Convergence and Certified Bounds](https://arxiv.org/abs/2006.16469). The KKT attack is adapted from its [original repository](https://github.com/kohpangwei/data-poisoning-journal-release).
-
+This repository maintains code for the paper "Poisoning Attacks with Provable Convergence to Convex Target Models". The KKT attack is adapted from its [original repository](https://github.com/kohpangwei/data-poisoning-journal-release).
 # Install Dependencies
 The program requires the following key dependencies:
 `python 2.7`, `numpy`, `cvxpy (version 0.4.11)`, `scikit-learn`, `scipy`, `matplotlib`. You can directly install the dependencies by running the following command:

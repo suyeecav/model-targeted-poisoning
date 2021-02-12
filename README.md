@@ -1,5 +1,5 @@
 # About
-This repository maintains code for the model-targeted poisoning attacks. The KKT attack is adapted from its [original github repository](https://github.com/kohpangwei/data-poisoning-journal-release).
+This repository maintains code for the model-targeted poisoning attacks. The KKT attack is adapted from its [original github repository](https://github.com/kohpangwei/data-poisoning-journal-release). Our experiments on deep neural networks are in a separate folder `dnn` and you can find more instructions inside the folder.
 # Install Dependencies
 The program requires the following key dependencies:
 `python 2.7`, `numpy`, `cvxpy (version 0.4.11)`, `scikit-learn`, `scipy`, `matplotlib`. You can directly install the dependencies by running the following command:
@@ -15,7 +15,7 @@ Please follow the instructions below to reproduce the results shown in the paper
 python generate_target_theta.py --dataset adult --model_type svm
 ```
 
-3. To run our attack, please use the command below. Again, replace `adult` with `mnist_17` or `dogfish` to run the attack on other datasets. replace `svm` with `lr` to run on logistic regression model. For the MNIST-17 dataset, if you wish to attack the improved target classifier, add `--improved` in the command below. By feeding different values to `--rand_seed`, we can repeat the attack process for multiple times and obtain more stable results. Results in the paper can be reproduced by feeding the seeds `12`,`23`,`34`,`45` individually to `--rand_seed` argument.
+3. To run our attack, please use the command below. Again, replace `adult` with `mnist_17` or `dogfish` to run the attack on other datasets. Replace `svm` with `lr` to run the attack on logistic regression model. For the MNIST-17 dataset, if you wish to attack the improved target classifier, add `--improved` in the command below. By feeding different values to `--rand_seed`, we can repeat the attack process for multiple times and obtain more stable results. Results in the paper can be reproduced by feeding the seeds `12`,`23`,`34`,`45` individually to `--rand_seed`.
 ```
 python run_kkt_online_attack.py --rand_seed 12 --dataset adult --model_type svm
 ```

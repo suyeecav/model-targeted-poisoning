@@ -24,6 +24,16 @@ import os
 import sys
 
 from sklearn.externals import joblib
+from PIL import Image
+
+def save_img(img, img_size = 32,num_channel = 3,name = "output.png"):
+    if len(img.shape) <=2:
+        img = np.reshape(img,(-1,img_size,img_size,num_channel))
+    # np.save(name, img)
+    fig = np.around((img)*255)
+    fig = fig.astype(np.uint8).squeeze()
+    pic = Image.fromarray(fig)
+    pic.save(name)
 
 def random_sample(low,high):
     return (high-low) * np.random.random_sample() + low
@@ -804,6 +814,7 @@ def incre_online_learning(X_train,
         print("Iteration Number:",num_iter)
         
         num_iter += 1
+
         # # set the model weights to proper value
         # curr_model.coef_ = theta_ol
         # curr_model.intercept_ = bias_ol
@@ -875,6 +886,12 @@ def incre_online_learning(X_train,
         x_poisons = np.repeat(max_loss_x,repeat_num,axis=0)
         y_poisons = np.array([max_loss_y]*repeat_num)
         
+        # just for debugging purpose, no longer needed
+        # if num_iter == 500:
+        #     # save the images
+        #     img_name = "{}_img_{}.png".format(num_iter,(max_loss_y+1.)/2.)
+        #     save_img(max_loss_x, img_size = 28,num_channel = 1,name = img_name)
+
         max_loss_poison = print_for_debug(
                         X_train,
                         y_train,

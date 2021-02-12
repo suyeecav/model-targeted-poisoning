@@ -32,7 +32,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model_type',default='lr',help='victim model type: SVM or rlogistic regression')
 # ol: target classifier is from the adapttive attack, kkt: target is from kkt attack, real: actual classifier, compare: compare performance
 # of kkt attack and adaptive attack using same stop criteria
-parser.add_argument('--target_model', default='all',help='set your target classifier, options: kkt, ol, real, compare, all')
+parser.add_argument('--target_model', default='real',help='set your target classifier, options: kkt, ol, real, compare, all')
 parser.add_argument('--dataset', default='adult',help="three datasets: mnist_17, adult, 2d_toy,dogfish")
 parser.add_argument('--poison_whole',action="store_true",help='if true, attack is indiscriminative attack')
 
@@ -67,11 +67,15 @@ else:
 assert dataset_name in ['adult','mnist_17','2d_toy','dogfish']
 if dataset_name == 'mnist_17':
     args.poison_whole = True
-    # args.incre_tol_par = 0.1
+    args.incre_tol_par = 0.1
     args.weight_decay = 0.09
     valid_theta_errs = [0.05,0.1,0.15]
 elif dataset_name == 'adult':
-    # args.incre_tol_par = 0.01
+    if args.model_type == 'lr':
+        args.incre_tol_par = 0.05
+    else:
+        args.incre_tol_par = 0.01
+
     valid_theta_errs = [1.0]
 elif dataset_name == '2d_toy':
     args.poison_whole = True
@@ -80,8 +84,14 @@ elif dataset_name == '2d_toy':
     else:
         valid_theta_errs = [1.0]
 elif dataset_name == 'dogfish':
+    if args.model_type == 'lr':
+        args.incre_tol_par = 1.0
+    else:
+        args.incre_tol_par = 2.0
+
+    args.poison_whole = True
     args.weight_decay = 1.1
-    incre_tol_par = args.incre_tol_par
+    
     if args.poison_whole:
         valid_theta_errs = [0.1,0.2,0.3] 
     else:

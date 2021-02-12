@@ -32,7 +32,7 @@ select_best = True
 if args.dataset == "adult":
     subpop = True
 elif args.dataset == "mnist_17":
-    subpop = False
+    subpop = True
 elif args.dataset == "2d_toy":
     # this is only to help test the optimzation framework
     # for generating the target classifier

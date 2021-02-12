@@ -29,7 +29,7 @@ elif dataset_name == 'adult':
     target_gen_procs = ['orig']
     repeat_num = 1 
     valid_theta_errs = [1.0]
-    rand_seeds = [12,23,45,35]
+    rand_seeds = [12,23,34,45]
 elif dataset_name == '2d_toy':
     poison_whole = True
     if poison_whole:
@@ -44,7 +44,7 @@ elif dataset_name == 'dogfish':
         incre_tol_par = 2.0
     repeat_num = 1 
     poison_whole = True
-    rand_seeds = [12]
+    rand_seeds = [12,23,34,45]
     if poison_whole:
         valid_theta_errs = [0.1,0.2,0.3]  
     else:

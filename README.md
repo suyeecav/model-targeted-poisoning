@@ -22,7 +22,7 @@ python run_kkt_online_attack.py --rand_seed 12 --dataset adult --model_type svm
 
 4. Once the attack is finished, run the following command to obtain the averaged results of the attack, which will be saved in directory `files/final_reslts` in `.csv` form. Replace dataset if necessary and if you used different random seeds for `--rand_seed` from above, please change the random_seeds specified in the source file. You can find the number of poisoning points used and also the computed lower bound in the `csv` file. 
 ```
-python process_avg_results.py --dataset adult
+python process_avg_results.py --dataset adult --model_type svm
 ```
 
 5. To generate the test accuracies (after poisoning) reported in Table 1 and Table 2 in the paper, run the following command to get the averaged results. Change datasets and model types if necessary.
@@ -32,6 +32,6 @@ python generate_table.py --dataset adult --model_type svm
 
 6. To reproduce the figures in the paper, run the following command. Replace the dataset if necessary and also be careful if the random seeds are different from the ones used above and change accordingly in the source file. 
 ```
-python plot_results.py --dataset adult
+python plot_results.py --dataset adult --model_type svm
 ```
 

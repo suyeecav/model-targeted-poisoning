@@ -11,6 +11,9 @@ import models
 MODEL_MAPPING = {
     "lenet": models.LeNet,
     "flat": models.FlatNet,
+    "flat_nodrop": models.FlatNetNoDrop,
+    "flat_bn": models.FlatNetBN,
+    "flat_bn_nodrop": models.FlatNetBNNoDrop,
     "lr": models.LR
 }
 
@@ -203,6 +206,7 @@ def train_model(model, loaders, epochs, c_rule,
                 no_val=False, low_confidence=False,
                 get_metrics_at_epoch_end=None,
                 clean_train_loader=None,
+                study_mode=False,
                 loss_fn="ce"):
     if save_path is None:
         save_option = 'none'
@@ -218,23 +222,25 @@ def train_model(model, loaders, epochs, c_rule,
     best_loss, best_vacc = np.inf, 0.0
     best_model = None
 
+    if study_mode: collect_stats = []
+
     iterator = range(epochs)
     if not verbose:
         iterator = tqdm(iterator)
     for e in iterator:
         # Train epoch
-        epoch(model, train_loader, optim, e + 1, c_rule, n_classes,
-              corrupt_class=corrupt_class,
-              poison_ratio=poison_ratio,
-              verbose=verbose, low_confidence=low_confidence,
-              lossfn=loss_fn)
+        tr_loss, _ = epoch(model, train_loader, optim, e + 1, c_rule, n_classes,
+                           corrupt_class=corrupt_class,
+                           poison_ratio=poison_ratio,
+                           verbose=verbose, low_confidence=low_confidence,
+                           lossfn=loss_fn)
 
         if not no_val:
             # Validation epoch
             (loss, acc) = epoch(model, val_loader, None, e + 1,
                                 c_rule, n_classes, verbose=verbose,
                                 lossfn=loss_fn)
-        if verbose:
+        if verbose or study_mode:
             if get_metrics_at_epoch_end is not None:
                 (prop_acc, _), (noprop_acc, _) = get_model_metrics(
                     model, clean_train_loader,
@@ -244,17 +250,28 @@ def train_model(model, loaders, epochs, c_rule,
                     "[Train] Population acc: %.4f, Non-population acc: %.4f" %
                     (prop_acc, noprop_acc)))
 
-                (prop_acc, _), (noprop_acc, _) = get_model_metrics(
+                (val_prop_acc, _), (val_noprop_acc, _) = get_model_metrics(
                     model, val_loader,
                     target_prop=get_metrics_at_epoch_end,
                     lossfn=loss_fn)
                 print(utils.yellow_print(
                     "[Val] Population acc: %.4f, Non-population acc: %.4f" %
-                    (prop_acc, noprop_acc)))
+                    (val_prop_acc, val_noprop_acc)))
 
                 norm = get_model_l2_norm(model).item()
                 print(utils.yellow_print(
                     "[Model] R(w): %.3f" % norm))
+
+                if study_mode:
+                    stats = {
+                        "train_prop_acc": 100 *prop_acc,
+                        "train_noprop_acc": 100 * noprop_acc,
+                        "val_prop_acc": 100 * val_prop_acc,
+                        "val_noprop_acc": 100 * val_noprop_acc,
+                        "norm": norm,
+                        "lossx100": 100 * tr_loss  # Scaling to visualize better
+                    }
+                    collect_stats.append(stats)
             print()
 
         # Keep track of checkpoint with best validation loss so far
@@ -270,6 +287,10 @@ def train_model(model, loaders, epochs, c_rule,
 
     if save_option != 'none':
         ch.save(best_model.state_dict(), os.path.join(save_path))
+
+    # Keep track of everything, if asked
+    if study_mode:
+        return model, best_loss, best_vacc, collect_stats
 
     # Return best validation metrics
     return model, best_loss, best_vacc

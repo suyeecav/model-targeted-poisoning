@@ -15,6 +15,7 @@ data/logs_pick_naive_ensemble_optimal/*
 data/logs_pick_ensemble_both_flat/*
 data/logs_pick_ensemble_both/*
 data/logs_pick_wrong/*
+data/nosaveruns/*
 data/logs_indis_filter/*
 data/ensemble_logs/*
 data/ensemble_mnist17_lr/*

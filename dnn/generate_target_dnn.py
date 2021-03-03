@@ -8,6 +8,10 @@ import os
 import utils
 import datasets
 
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.rcParams['figure.dpi'] = 200
+
 
 def identify_before_train(model, args, ratio, blind=False):
     if args.verbose:
@@ -110,7 +114,7 @@ def train_poisoned_model(model, callable_ds, poison_ratio, args):
         train_loader, val_loader = ds.get_loaders(batch_size, shuffle=shuffle)
         clean_train_loader, _ = ds_clean.get_loaders(
             batch_size, shuffle=shuffle)
-        model, _, _ = dnn_utils.train_model(
+        return_data = dnn_utils.train_model(
             model, (train_loader, val_loader), epochs=args.epochs,
             c_rule=args.c_rule, n_classes=ds.n_classes,
             weight_decay=args.weight_decay,
@@ -118,7 +122,13 @@ def train_poisoned_model(model, callable_ds, poison_ratio, args):
             no_val=True,
             get_metrics_at_epoch_end=args.poison_class,
             clean_train_loader=clean_train_loader,
+            study_mode=args.study_mode,
             loss_fn=args.loss)
+        
+        if args.study_mode:
+            model, _, _, all_stats = return_data
+        else:
+            model, _, _ = return_data
 
     # Poison data per batch
     elif args.poison_mode == "batch":
@@ -144,6 +154,10 @@ def train_poisoned_model(model, callable_ds, poison_ratio, args):
             args.weight_decay, verbose=args.verbose,
             low_confidence=args.low_confidence,
             loss_fn=args.loss)
+
+    if args.study_mode:
+        return model, all_stats
+
     return model
 
 
@@ -152,7 +166,7 @@ if __name__ == "__main__":
     parser.add_argument('--model_arch', default='flat',
                         choices=dnn_utils.get_model_names(),
                         help='Victim model architecture')
-    parser.add_argument('--dataset', default='mnist',
+    parser.add_argument('--dataset', default='mnist17_first',
                         choices=datasets.get_dataset_names(),
                         help="Which dataset to use?")
     parser.add_argument('--attacker_goal', default=0.05,
@@ -198,6 +212,8 @@ if __name__ == "__main__":
                         "for later use. Only valid for pre mode")
     parser.add_argument('--dir_prefix', default="./data/models/",
                         help="Directory to save models in")
+    parser.add_argument('--study_mode', action="store_true",
+                        help="Plot statistics across epochs")
     parser.add_argument('--poison_rates', type=str,
                         default="0.4",
                         help='Comma-separated list of poison-rates to try')
@@ -255,7 +271,10 @@ if __name__ == "__main__":
         model = dnn_utils.get_seeded_wrapped_model(args, n_classes=n_classes)
 
         # Train model
-        model = train_poisoned_model(model, callable_ds, ratio, args)
+        if args.study_mode:
+            model, all_stats = train_poisoned_model(model, callable_ds, ratio, args)
+        else:
+            model = train_poisoned_model(model, callable_ds, ratio, args)
 
         # Compute metrics for said model
         train_loader, val_loader = callable_ds().get_loaders(512)
@@ -276,6 +295,18 @@ if __name__ == "__main__":
         print('Test Target Acc : %.3f' % tst_sub_acc)
         print('Test Collat Acc : %.3f' % tst_nsub_acc)
         print()
+
+        # If study mode, plot trends across epochs
+        if args.study_mode:
+            X = np.arange(len(all_stats))
+            look_at = ["train_prop_acc", "train_noprop_acc", "val_prop_acc", "val_noprop_acc", "norm", "lossx100"]
+            for la in look_at:
+                Y = [p[la] for p in all_stats]
+                plt.plot(X, Y, label=la)
+            plt.legend()
+            plt.savefig("./data/visualize/run_info_pr-%.2f_seed-%d_arch-%s.png" %
+                        (ratio, args.seed, args.model_arch))
+
 
         # Purpose of this mode is just to train model once
         # Exit after that

@@ -304,8 +304,8 @@ if __name__ == "__main__":
                 Y = [p[la] for p in all_stats]
                 plt.plot(X, Y, label=la)
             plt.legend()
-            plt.savefig("./data/visualize/run_info_pr-%.2f_seed-%d_arch-%s.png" %
-                        (ratio, args.seed, args.model_arch))
+            plt.savefig("./data/visualize/run_info_pr-%.2f_seed-%d_arch-%s_wd-%f.png" %
+                        (ratio, args.seed, args.model_arch, args.weight_decay))
 
 
         # Purpose of this mode is just to train model once

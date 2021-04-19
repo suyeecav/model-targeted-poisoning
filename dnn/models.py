@@ -47,6 +47,63 @@ class FlatNet(nn.Module):
         return x
 
 
+class FlatNetNoDrop(nn.Module):
+    def __init__(self, n_classes=10):
+        super(FlatNetNoDrop, self).__init__()
+        self.fc1 = nn.Linear(784, 364)
+        self.fc2 = nn.Linear(364, 52)
+        self.fc3 = nn.Linear(52, n_classes)
+
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+class FlatNetBN(nn.Module):
+    def __init__(self, n_classes=10):
+        super(FlatNetBN, self).__init__()
+        self.fc1 = nn.Linear(784, 364)
+        self.fc2 = nn.Linear(364, 52)
+        self.fc3 = nn.Linear(52, n_classes)
+        self.drop_1 = nn.Dropout(0.5)
+        self.drop_2 = nn.Dropout(0.5)
+        self.bn_1 = nn.BatchNorm1d(364)
+        self.bn_2 = nn.BatchNorm1d(52)
+
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        x = F.relu(self.fc1(x))
+        x = self.bn_1(x)
+        x = self.drop_1(x)
+        x = F.relu(self.fc2(x))
+        x = self.bn_2(x)
+        x = self.drop_2(x)
+        x = self.fc3(x)
+        return x
+
+
+class FlatNetBNNoDrop(nn.Module):
+    def __init__(self, n_classes=10):
+        super(FlatNetBNNoDrop, self).__init__()
+        self.fc1 = nn.Linear(784, 364)
+        self.fc2 = nn.Linear(364, 52)
+        self.fc3 = nn.Linear(52, n_classes)
+        self.bn_1 = nn.BatchNorm1d(364)
+        self.bn_2 = nn.BatchNorm1d(52)
+
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        x = F.relu(self.fc1(x))
+        x = self.bn_1(x)
+        x = F.relu(self.fc2(x))
+        x = self.bn_2(x)
+        x = self.fc3(x)
+        return x
+
+
 # Basic logistic-regression model
 class LR(nn.Module):
     def __init__(self, n_classes=10):

@@ -1,6 +1,6 @@
 import os
 import errno
-from torchvision.datasets import MNIST
+from torchvision.datasets import MNIST, FashionMNIST
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch as ch
@@ -194,6 +194,53 @@ class MNISTEvenWrapper(GenericDataWrapper):
         super(MNISTEvenWrapper, self).__init__(train, val, (1, 28, 28), 5)
 
 
+class FMNISTWrapper(GenericDataWrapper):
+    def __init__(self, transform=None):
+        if transform is None:
+            transform = transforms.ToTensor()
+
+        train = FashionMNIST(utils.CONSTANTS.DATA_FOLDER,
+                      download=True,
+                      transform=transform)
+        val = FashionMNIST(utils.CONSTANTS.DATA_FOLDER,
+                    train=False,
+                    download=True,
+                    transform=transform)
+
+        super(FMNISTWrapper, self).__init__(train, val, (1, 28, 28), 10)
+
+
+class FMNISTShirtShoeWrapper(GenericDataWrapper):
+    def __init__(self, transform=None):
+        if transform is None:
+            transform = transforms.ToTensor()
+
+        train = FashionMNIST(utils.CONSTANTS.DATA_FOLDER,
+                             download=True,
+                             transform=transform)
+        val = FashionMNIST(utils.CONSTANTS.DATA_FOLDER,
+                           train=False,
+                           download=True,
+                           transform=transform)
+        
+        # Shirt & T-shirts v/s Sandal & Sneaker
+        def filter_process_data(x, y):
+            c0 = ch.logical_or(y == 0, y == 6)
+            c1 = ch.logical_or(y == 5, y == 7)
+            wanted = ch.logical_or(c0, c1)
+            x, y = x[wanted], y[wanted]
+            y = 1 * np.logical_or(y == 5, y == 7)
+            return x, y
+
+        # Process data to apply selection filters
+        train.data, train.targets = filter_process_data(
+            train.data, train.targets)
+        val.data, val.targets = filter_process_data(
+            val.data, val.targets)
+
+        super(FMNISTShirtShoeWrapper, self).__init__(train, val, (1, 28, 28), 2)
+
+
 DATASET_MAPPING = {
     "mnist": MNISTWrapper,
     "mnist17": MNIST17Wrapper,
@@ -201,6 +248,8 @@ DATASET_MAPPING = {
     "mnist17_second": MNIST17SecondWrapper,
     "memory": MemoryDataset,
     "mnisteven": MNISTEvenWrapper,
+    "fmnist": FMNISTWrapper,
+    "fmnistss": FMNISTShirtShoeWrapper
 }
 
 

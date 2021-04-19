@@ -299,7 +299,10 @@ if __name__ == "__main__":
         # If study mode, plot trends across epochs
         if args.study_mode:
             X = np.arange(len(all_stats))
+            # For binary case
             look_at = ["train_prop_acc", "train_noprop_acc", "val_prop_acc", "val_noprop_acc", "norm", "lossx100"]
+            # For multi case
+            # look_at = ["train_prop_acc", "train_noprop_acc", "val_prop_acc", "val_noprop_acc", "norm", "lossx50"]
             for la in look_at:
                 Y = [p[la] for p in all_stats]
                 plt.plot(X, Y, label=la)

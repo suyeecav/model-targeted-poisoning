@@ -1,0 +1,9 @@
+data_*/*
+logs_*/*
+data/*
+logs/*
+LR_data/*
+NEWdata*
+NEWlog*
+new_logs_*
+new_data_*

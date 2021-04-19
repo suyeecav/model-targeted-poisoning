@@ -269,7 +269,10 @@ def train_model(model, loaders, epochs, c_rule,
                         "val_prop_acc": 100 * val_prop_acc,
                         "val_noprop_acc": 100 * val_noprop_acc,
                         "norm": norm,
-                        "lossx100": 100 * tr_loss  # Scaling to visualize better
+                        # 100 scal for binary, 50 for multiclass
+                          # Scaling to visualize better
+                        "lossx100": 100 * tr_loss,
+                        "lossx50": 50 * tr_loss
                     }
                     collect_stats.append(stats)
             print()

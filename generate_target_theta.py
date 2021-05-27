@@ -420,6 +420,7 @@ elif args.improved:
 
     # save the selected subpop info
     cls_fname = 'files/data/{}_{}_selected_subpops.txt'.format(dataset_name, args.model_type)
+
     np.savetxt(cls_fname,np.array([cl_inds,cl_cts]))
 
     if dataset_name == 'dogfish':

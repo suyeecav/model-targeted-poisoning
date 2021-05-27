@@ -5,16 +5,7 @@ data/datasets/*
 .vscode/*
 data/models/*
 data/logs/*
-data/logs_pick/*
-data/logs_pick_old/*
-data/logs_pick_random/*
-data/logs_pick_lenet/*
-data/logs_pick_ensemble/*
-data/logs_pick_naive_ensemble/*
-data/logs_pick_naive_ensemble_optimal/*
-data/logs_pick_ensemble_both_flat/*
-data/logs_pick_ensemble_both/*
-data/logs_pick_wrong/*
+data/logs_*/*
 data/nosaveruns/*
 data/logs_indis_filter/*
 data/ensemble_logs/*

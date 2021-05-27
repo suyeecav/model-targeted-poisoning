@@ -32,8 +32,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model_type',default='lr',help='victim model type: SVM or rlogistic regression')
 # ol: target classifier is from the adapttive attack, kkt: target is from kkt attack, real: actual classifier, compare: compare performance
 # of kkt attack and adaptive attack using same stop criteria
-parser.add_argument('--target_model', default='real',help='set your target classifier, options: kkt, ol, real, compare, all')
-parser.add_argument('--dataset', default='adult',help="three datasets: mnist_17, adult, 2d_toy,dogfish")
+parser.add_argument('--target_model', default='all',help='set your target classifier, options: kkt, ol, real, compare, all')
+parser.add_argument('--dataset', default='adult', choices=['adult','mnist_17','2d_toy','dogfish'])
 parser.add_argument('--poison_whole',action="store_true",help='if true, attack is indiscriminative attack')
 
 # some params related to online algorithm, use the default
@@ -64,7 +64,6 @@ if args.improved:
 else:
     target_gen_proc = 'orig'
 
-assert dataset_name in ['adult','mnist_17','2d_toy','dogfish']
 if dataset_name == 'mnist_17':
     args.poison_whole = True
     args.incre_tol_par = 0.1
@@ -176,7 +175,7 @@ else:
         sys.exit(1) 
     # find the selected clusters and corresponding subpop size
     # cl_inds, cl_cts = np.unique(trn_km, return_counts=True)
-    cls_fname = 'files/data/{}_{}_selected_subpops.txt'.format(dataset_name,args.model_type)
+    cls_fname = 'files/data/{}_{}_selected_subpops.txt'.format(dataset_name, args.model_type)
     selected_subpops = np.loadtxt(cls_fname)
     cl_inds = selected_subpops[0]
     cl_cts = selected_subpops[1]
@@ -874,7 +873,7 @@ for valid_theta_err in valid_theta_errs:
             kkt_model_p_b = kkt_model_p_b[0]
             kkt_tol_par_norm = np.sqrt(np.linalg.norm(model_dumb1.coef_.reshape(-1)-kkt_model_p.coef_.reshape(-1))**2+(model_dumb1_b - kkt_model_p_b)**2)
             print("norm difference between selected target and selected kkt model is:",kkt_tol_par_norm)
-            if kkt_tol_par < 1e-4:
+            if args.model_type != "lr" and kkt_tol_par < 1e-4:
                 print("something wrong with selected kkt model or the target model!")
                 sys.exit(0)
 
@@ -1068,7 +1067,7 @@ for valid_theta_err in valid_theta_errs:
                                                                 model_p_online,
                                                                 kkt_x_modified.shape[0]-X_train.shape[0],
                                                                 args)
-            if best_lower_bound > (kkt_x_modified.shape[0]-X_train.shape[0]):
+            if args.model_type != 'lr' and best_lower_bound > (kkt_x_modified.shape[0]-X_train.shape[0]):
                 print("violation observed for the lower bound of KKT model!")
                 sys.exit(0)
             kkt_target_lower_bound_and_attacks = kkt_target_lower_bound_and_attacks + [best_lower_bound,conser_lower_bound,\
@@ -1254,7 +1253,7 @@ for valid_theta_err in valid_theta_errs:
                                                                 model_p_online,
                                                                 len(target_online_poisons_y),
                                                                 args)
-            if best_lower_bound > len(target_online_poisons_y):
+            if args.model_type != 'lr' and best_lower_bound > len(target_online_poisons_y):
                 print("violation observed for the lower bound of Adaptive attack model!")
                 sys.exit(0)
             ol_target_lower_bound_and_attacks = ol_target_lower_bound_and_attacks + [best_lower_bound,conser_lower_bound,len(target_online_poisons_y),len(online_poisons_y),
@@ -1466,3 +1465,6 @@ for valid_theta_err in valid_theta_errs:
         compare_lower_bound_file.flush()
         compare_lower_bound_file.close()
 
+    # Print reminder message to not expect useful lower bound if model type was LR
+    if args.model_type == 'lr':
+        print("For LR, the lower bound is not longer useful")

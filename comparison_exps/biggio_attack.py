@@ -1,6 +1,5 @@
 from art.attacks.poisoning import PoisoningAttackSVM
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder
 from sklearn.svm import LinearSVC
 import numpy as np
 from art.estimators.classification import SklearnClassifier

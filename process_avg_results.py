@@ -6,14 +6,14 @@ import sys
 import os
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_type', default='svm',help="two models: svm, lr")
-parser.add_argument('--dataset', default='adult',help="three datasets: mnist_17, adult, 2d_toy, dogfish")
+parser.add_argument('--model_type', default='svm', choices=['lr','svm'])
+parser.add_argument('--target', default='svm', help="which target resluts to process?")
+parser.add_argument('--dataset', default='adult',
+                    choices=['adult', 'mnist_17', '2d_toy', 'dogfish'])
 args = parser.parse_args()
 
 dataset_name = args.dataset
 model_type = args.model_type
-assert dataset_name in ['adult','mnist_17','2d_toy','dogfish']
-assert model_type in ['lr','svm']
 
 if dataset_name == 'mnist_17':
     poison_whole = True
@@ -26,6 +26,8 @@ if dataset_name == 'mnist_17':
 elif dataset_name == 'adult':
     poison_whole = False
     incre_tol_par = 0.01
+    if model_type == 'lr':
+        incre_tol_par = 0.05
     target_gen_procs = ['orig']
     repeat_num = 1 
     valid_theta_errs = [1.0]

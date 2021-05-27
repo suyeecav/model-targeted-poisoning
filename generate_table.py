@@ -71,7 +71,7 @@ else:
         sys.exit(1) 
     # find the selected clusters and corresponding subpop size
     # cl_inds, cl_cts = np.unique(trn_km, return_counts=True)
-    cls_fname = 'files/data/{}_selected_subpops.txt'.format(dataset_name)
+    cls_fname = 'files/data/{}_{}_selected_subpops.txt'.format(dataset_name, args.model_type)
     selected_subpops = np.loadtxt(cls_fname)
     cl_inds = selected_subpops[0]
     cl_cts = selected_subpops[1]

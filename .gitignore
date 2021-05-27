@@ -1,3 +1,5 @@
 __pycache__/*
 files/.DS_Store
 files/data/*.npz
+*.pyc
+files/*

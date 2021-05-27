@@ -1,11 +1,13 @@
 # About
 This repository maintains code for the model-targeted poisoning attacks. The KKT attack is adapted from its [original github repository](https://github.com/kohpangwei/data-poisoning-journal-release).
+
 # Install Dependencies
 The program requires the following key dependencies:
-`python 2.7`, `numpy`, `cvxpy (version 0.4.11)`, `scikit-learn`, `scipy`, `matplotlib`. You can directly install the dependencies by running the following command:
+`python 2.7`, `numpy`, `cvxpy (version 0.4.11)`, `scikit-learn`, `scipy`, `matplotlib`. You can directly install these dependencies by running the following command:
 ```
 pip install -r requirements.txt
 ```
+Gurobi optimizer, if needed, can be setup by obtaining a license and following instructions [here](https://www.gurobi.com/documentation/9.1/quickstart_linux/software_installation_guid.html).
 
 # Run the Code
 Please follow the instructions below to reproduce the results shown in the paper:

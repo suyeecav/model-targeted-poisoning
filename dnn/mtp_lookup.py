@@ -136,10 +136,20 @@ def modelTargetPoisoning(model_p, logger, args):
         model_t.eval()
 
         # Line 4: Compute (x*, y*)
-        (x_opt, y_opt), best_loss = mtp_utils.lookup_based_optimal(
-            theta_t=model_t, theta_p=model_p, loader=loader_optim,
-            n_classes=ds_second.n_classes, random=args.random,
-            lossfn=args.loss, filter=args.filter, verbose=True)
+        if args.optim_type == "lookup":
+            (x_opt, y_opt), best_loss = mtp_utils.lookup_based_optimal(
+                theta_t=model_t, theta_p=model_p, loader=loader_optim,
+                n_classes=ds_second.n_classes, random=args.random,
+                lossfn=args.loss, filter=args.filter, verbose=True)
+        elif args.optim_type == "dataset_grad":
+            # Worked: 95% error, 100 steps, 5 trials, 1e-2 step size, 20 repeats
+            # Running: 100% error, 100 steps, 20 trials, 1e-2, 10 repeats
+            (x_opt, y_opt), best_loss = mtp_utils.dataset_grad_optimal(
+                theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, trials=args.optim_trials, num_steps=args.optim_steps,
+                step_size=args.optim_lr, verbose=True,  ds=ds)
+        else:
+            raise NotImplemented("Loss optimization method not implemented")
 
         # Log some information about x*, y*
         with ch.no_grad():
@@ -206,16 +216,16 @@ if __name__ == "__main__":
                         choices=['max_loss', 'norm'],
                         help='Stop criteria of online alg: max_loss or norm')
     parser.add_argument('--poison_model_path', type=str,
+                        default="./data/models/seed-2021_ratio-0.6_mode-pre_loss-0.4150749979689362.pth",
                         help='Path to saved poisoned-classifier')
     parser.add_argument('--log_path', type=str,
-                        default="./data/logs_pick",
+                        default="./data/logs_pick_new",
                         help='Path to save logs')
     parser.add_argument('--theta_values', type=str,
-                        default="0.95",
+                        default="0.99",
                         help='Comma-separated list of theta values to try')
     parser.add_argument('--poison_class', default=0,
-                        type=int,
-                        choices=list(range(10)),
+                        type=int, choices=list(range(10)),
                         help='Which class to target for corruption')
     parser.add_argument('--loss', default="ce",
                         choices=["ce", "hinge"],
@@ -267,6 +277,15 @@ if __name__ == "__main__":
                         help='Path to first split of dataset')
     parser.add_argument('--path_2', default="./data/datasets/MNIST17/split_2.pt",
                         help='Path to second split of dataset')
+    parser.add_argument('--optim_type', default="lookup",
+                        choices=["dataset_grad", "lookup"],
+                        help='Optimization method to compute (x*, y*)')
+    parser.add_argument('--optim_lr', default=1e-2,
+                        type=float, help='Step size for optimization step')
+    parser.add_argument('--optim_steps', default=100,
+                        type=int, help='NUmber of steps for optimization step')
+    parser.add_argument('--optim_trials', default=5,
+                        type=int, help='Number of trials for optimization step')
 
     # Different levels of verbose
     parser.add_argument('--verbose', action="store_true",
@@ -337,8 +356,10 @@ if __name__ == "__main__":
         log_dir = os.path.join(args.log_path, str(
             valid_theta_err) +
             "_mnist17split" +
+            "_" + args.optim_type +
             "_" + str(args.model_arch) +
             "_" + str(args.n_copies) +
+            "_" + str(args.optim_trials) + 
             "_" + str(args.seed))
         utils.ensure_dir_exists(log_dir)
         logger = SummaryWriter(log_dir=log_dir, flush_secs=10)

@@ -174,7 +174,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', default=-1, type=int,
                         help="Batch size while training models"
                              "Set as -1 to run GD instead of BGD")
-    parser.add_argument('--poison_class', default=4, type=int,
+    parser.add_argument('--poison_class', default=0, type=int,
                         choices=list(range(10)),
                         help='Which class to target for corruption')
     parser.add_argument('--epochs', default=10, type=int,

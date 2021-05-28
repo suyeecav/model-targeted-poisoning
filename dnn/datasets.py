@@ -274,7 +274,7 @@ def safe_makedirs(path):
 
 
 def get_dataset_gradients(model, ds, batch_size, weight_decay,
-                          verbose=False, is_train=True):
+                          verbose=False, is_train=True, negate=True):
     # Make sure model is in eval model
     model.eval()
 
@@ -316,9 +316,10 @@ def get_dataset_gradients(model, ds, batch_size, weight_decay,
             for i, gd in enumerate(grads):
                 gradients[i] += gd.clone().detach()
 
-    # Negate sum, since they represent virtual GD runs
-    for i in range(len(gradients)):
-        gradients[i] *= -1
+    if negate:
+        # Negate sum, since they represent virtual GD runs
+        for i in range(len(gradients)):
+            gradients[i] *= -1
 
     return gradients
 

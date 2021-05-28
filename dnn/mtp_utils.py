@@ -6,6 +6,7 @@ import torch.autograd as autograd
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import dnn_utils
 import utils
+from datasets import get_dataset_gradients
 
 
 def compute_loss(x, y, theta_t, theta_p, lossfn="ce",
@@ -329,6 +330,163 @@ def lookup_based_optimal(theta_t, theta_p, loader,
 
     best_x = best_x.unsqueeze(0)
     best_y = ch.ones((1,), dtype=ch.long).cuda() * best_y.item()
+
+    return (best_x, best_y), best_loss
+
+
+def dataset_gradient_loss(gradients, model_diff_grads, dataset_grads):
+    # cosine similarity as the loss function
+    cos = ch.nn.CosineSimilarity(dim=0, eps=1e-6)
+    totcost = 0.
+    indies = []
+    weights = [1, 1, 1, 1, 1, 1]
+    for i in range(len(gradients)):
+        cost = cos(model_diff_grads[i].flatten(
+        ), dataset_grads[i].flatten() + gradients[i].flatten())
+
+        # cost = cos(gradients[i].flatten(
+        # ), model_diff_grads[i].flatten() + dataset_grads[i].flatten())
+        # We care about gradients only when they contribute to loss
+        totcost += (1 - cost) #* weights[i]
+        indies.append(cost.item())
+    return totcost / len(gradients), indies
+
+
+def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
+                          trials=10, num_steps=200, step_size=1e-2,
+                          verbose=True, start_with=None, dynamic_lr=False,
+                          ensemble_p=False, ds=None):
+    
+    # Put both models in evaluation mode
+    theta_t.eval()
+    if ensemble_p:
+        for tp in theta_p:
+            tp.eval()
+    else:
+        theta_p.eval()
+
+    best_loss, prev_loss = np.inf, -np.inf
+
+    if verbose:
+        print(utils.yellow_print("[Computing optimal x*, y*]"))
+    
+    if start_with is None:
+        # Initialize with random data
+        x_s = ch.rand(*((n_classes * trials,) + input_shape)).cuda()
+
+        # Array of all possible labels
+        ys = ch.arange(n_classes, dtype=ch.long).cuda()
+        ys = ys.repeat_interleave(trials)
+    else:
+        # Start with provided data
+        x_s, ys = start_with[0].cuda(), start_with[1].cuda()
+
+    # get summed gradients from theta_t to theta_p 
+    theta_t_ws = list(utils.get_relevant_params(theta_t.named_parameters()))
+    theta_p_ws = list(utils.get_relevant_params(theta_p.named_parameters()))
+
+    weight_diffs = []
+    for i in range(len(theta_t_ws)):
+        weight_diff = (theta_t_ws[i] - theta_p_ws[i])
+        weight_diff = weight_diff.clone().detach().requires_grad_(False)
+        weight_diffs.append(weight_diff)
+    
+    # Compute dataset gradients
+    # Can be done more efficiently by caching gradients on D_c, but we will worry about that later
+    dataset_gradients = get_dataset_gradients(
+        model=theta_t, ds=ds, batch_size=1024,
+        weight_decay=None, verbose=False, is_train=True,
+        negate=False)
+    
+    # Loss we care about
+    ce_loss = nn.CrossEntropyLoss(reduction='mean').cuda()
+
+    # start the optimization process
+    for j in range(n_classes * trials):
+        x_ = x_s[j:j+1]
+        y = ys[j:j+1]
+        
+        x_ = autograd.Variable(x_.clone(), requires_grad=True)
+        optim = ch.optim.Adam([x_], lr=step_size, weight_decay=0)
+
+        if dynamic_lr:
+            scheduler = ReduceLROnPlateau(
+                optim, mode='max', factor=0.5,
+                cooldown=15,
+                patience=50,
+                min_lr=1e-2,
+                threshold=1e-2,
+                threshold_mode='abs',)
+        
+        iterator = range(num_steps)
+        if verbose:
+            iterator = tqdm(iterator)
+        
+        for i in iterator:
+            theta_t.zero_grad()
+            optim.zero_grad()
+            # Compute gradients of current poison point w.r.t. curr model
+            loss = ce_loss(theta_t(x_), y)
+
+            # grads, = ch.autograd.grad(loss, [x_],retain_graph=True, create_graph=True)
+            grads = list(ch.autograd.grad(loss, theta_t.parameters(), retain_graph=True, create_graph=True))
+
+            # reconstruction loss for maximizing the cosine similarity
+            reconst_loss, indies = dataset_gradient_loss(
+                grads, weight_diffs, dataset_gradients)
+
+            if verbose:
+                with ch.no_grad():
+                    cosines = ",".join(["%.5f" % x for x in indies])
+                    iterator.set_description(
+                            "[%d] loss: %.4f | %s"
+                            % (y.item(), reconst_loss.item(), cosines))
+            
+            # compute gradients w.r.t x data
+            # reconst_loss = ch.sum(reconst_loss)
+            reconst_loss.backward()
+            optim.step()
+
+            with ch.no_grad(): 
+                # Clip data back to [0, 1] range
+                # x_ = ch.clamp(x_, 0, 1) # this will actally cause vanishing gradients 
+                x_.data = ch.clamp(x_.data, 0, 1)
+
+            # check the similarity again on the clipped data and pick best one
+            loss_new = ce_loss(theta_t(x_), y)
+            
+            # grads_new, = ch.autograd.grad(loss_new, [x_])
+            grads_new = ch.autograd.grad(loss_new, theta_t.parameters())
+            # reconstruction loss for maximizing the cosine similarity
+            reconst_loss_new, _ = dataset_gradient_loss(grads_new, weight_diffs, dataset_gradients)
+
+            # Keep track of best loss, class
+            if best_loss > reconst_loss_new:
+                best_loss = reconst_loss_new
+                # best_x = x_.squeeze().data.clone()
+                best_x = x_.data.clone()
+                # best_y = y.squeeze()
+                best_y = y
+
+            # Stop optimization if loss seems to have converged
+            this_iter_loss_on_clipped_data = reconst_loss_new.item()
+            # print("(x*,y*) loss stagnation", prev_loss,
+            #     this_iter_loss_on_clipped_data)
+
+            # if np.abs(prev_loss - this_iter_loss_on_clipped_data) < 1e-6:
+            #     print("(x*,y*) loss stagnation", prev_loss,
+            #         this_iter_loss_on_clipped_data)
+            #     break
+
+            # Keep track of this loss for next iteration comparison
+            prev_loss = this_iter_loss_on_clipped_data
+
+            if dynamic_lr:
+                # Update scheduler
+                scheduler.step(prev_loss)
+    
+    # best_x = best_x.detach().unsqueeze(0)
+    # best_y = ch.ones((1,), dtype=ch.long).cuda() * best_y.detach().item()
 
     return (best_x, best_y), best_loss
 

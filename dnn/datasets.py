@@ -311,10 +311,10 @@ def get_dataset_gradients(model, ds, batch_size, weight_decay,
 
         # Accumulate gradients
         if len(gradients) == 0:
-            gradients = [x.clone().detach() for x in grads]
+            gradients = [x.clone().detach().requires_grad_(False) for x in grads]
         else:
             for i, gd in enumerate(grads):
-                gradients[i] += gd.clone().detach()
+                gradients[i] += gd.clone().detach().requires_grad_(False)
 
     if negate:
         # Negate sum, since they represent virtual GD runs

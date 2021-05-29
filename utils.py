@@ -907,7 +907,7 @@ def incre_online_learning(X_train,
                 print("something wrong with the lower bound for target model generated from heuristic method!")
                 sys.exit(0)
 
-        if target_model_type in ["kkt","ol"]:
+        if target_model_type in ["kkt","ol"] and args.model_type != "lr":
             if lower_bound > attack_num_poison:
                 print("something wrong with the lower bound of classifier generated from our attack or KKT attack!")
                 sys.exit(0)

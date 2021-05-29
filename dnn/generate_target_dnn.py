@@ -177,7 +177,7 @@ if __name__ == "__main__":
     parser.add_argument('--poison_class', default=0, type=int,
                         choices=list(range(10)),
                         help='Which class to target for corruption')
-    parser.add_argument('--epochs', default=10, type=int,
+    parser.add_argument('--epochs', default=20, type=int,
                         help='Epochs while training models')
     parser.add_argument('--lr', default=2e-3, type=float,
                         help='Learning rate for models')

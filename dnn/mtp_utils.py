@@ -158,7 +158,7 @@ def find_optimal_using_optim(theta_t, theta_p, input_shape, n_classes,
     else:
         theta_p.eval()
 
-    best_loss, prev_loss = -np.inf, np.inf
+    best_loss, prev_loss = ch.tensor(-np.inf).cuda(), np.inf
 
     if verbose:
         print(utils.yellow_print("[Computing optimal x*, y*]"))
@@ -206,9 +206,9 @@ def find_optimal_using_optim(theta_t, theta_p, input_shape, n_classes,
             with ch.no_grad():
                 useful = ch.mean(1. * (ch.argmax(theta_t(x_), 1) != y)).item()
                 iterator.set_description(
-                    "(mean) loss diff : %.3f, (mean) Loss_t: %.3f,"
-                    " (mean) Loss_p: %.3f | useful: %.2f" %
-                    ((-loss).mean(), loss_t.mean(), loss_p.mean(), useful))
+                    "[%d] Mean loss: %.4f, | Best loss: %.4f | (Mean) Loss_t: %.3f,"
+                    " (Mean) Loss_p: %.3f | | useful: %.2f" %
+                    (y.item(), (-loss).mean(), best_loss.item(), loss_t.mean(), loss_p.mean(), useful))
 
         # Compute gradients
         loss = ch.mean(loss)
@@ -341,12 +341,9 @@ def dataset_gradient_loss(gradients, model_diff_grads, dataset_grads):
     indies = []
     weights = [1, 1, 1, 1, 1, 1]
     for i in range(len(gradients)):
-        cost = cos(model_diff_grads[i].flatten(
-        ), dataset_grads[i].flatten() + gradients[i].flatten())
-
-        # cost = cos(gradients[i].flatten(
-        # ), model_diff_grads[i].flatten() + dataset_grads[i].flatten())
-        # We care about gradients only when they contribute to loss
+        vec_1 = model_diff_grads[i].flatten()
+        vec_2 = dataset_grads[i].flatten() + gradients[i].flatten()
+        cost = cos(vec_1, vec_2)
         totcost += (1 - cost) #* weights[i]
         indies.append(cost.item())
     return totcost / len(gradients), indies
@@ -355,7 +352,7 @@ def dataset_gradient_loss(gradients, model_diff_grads, dataset_grads):
 def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
                           trials=10, num_steps=200, step_size=1e-2,
                           verbose=True, start_with=None, dynamic_lr=False,
-                          ensemble_p=False, ds=None):
+                          ensemble_p=False, ds=None, signed=False):
     
     # Put both models in evaluation mode
     theta_t.eval()
@@ -365,7 +362,7 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
     else:
         theta_p.eval()
 
-    best_loss, prev_loss = np.inf, -np.inf
+    best_loss, prev_loss = ch.tensor(np.inf).cuda(), -np.inf
 
     if verbose:
         print(utils.yellow_print("[Computing optimal x*, y*]"))
@@ -409,6 +406,10 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
         x_ = autograd.Variable(x_.clone(), requires_grad=True)
         optim = ch.optim.Adam([x_], lr=step_size, weight_decay=0)
 
+        # Use signed update, if requested
+        if signed:
+            x_.register_hook(lambda grad: ch.sign(grad))
+
         if dynamic_lr:
             scheduler = ReduceLROnPlateau(
                 optim, mode='max', factor=0.5,
@@ -423,13 +424,16 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
             iterator = tqdm(iterator)
         
         for i in iterator:
+            # Clear accumulated gradients
             theta_t.zero_grad()
             optim.zero_grad()
+
             # Compute gradients of current poison point w.r.t. curr model
             loss = ce_loss(theta_t(x_), y)
 
-            # grads, = ch.autograd.grad(loss, [x_],retain_graph=True, create_graph=True)
-            grads = list(ch.autograd.grad(loss, theta_t.parameters(), retain_graph=True, create_graph=True))
+            # Get gradients for model parameters
+            grads = list(ch.autograd.grad(loss, theta_t.parameters(),
+                                          retain_graph=True, create_graph=True))
 
             # reconstruction loss for maximizing the cosine similarity
             reconst_loss, indies = dataset_gradient_loss(
@@ -439,26 +443,25 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
                 with ch.no_grad():
                     cosines = ",".join(["%.5f" % x for x in indies])
                     iterator.set_description(
-                            "[%d] loss: %.4f | %s"
-                            % (y.item(), reconst_loss.item(), cosines))
+                            "[%d] Loss: %.4f | Best loss: %.4f | %s"
+                            % (y.item(), reconst_loss.item(), best_loss, cosines))
             
             # compute gradients w.r.t x data
-            # reconst_loss = ch.sum(reconst_loss)
             reconst_loss.backward()
             optim.step()
 
             with ch.no_grad(): 
                 # Clip data back to [0, 1] range
-                # x_ = ch.clamp(x_, 0, 1) # this will actally cause vanishing gradients 
                 x_.data = ch.clamp(x_.data, 0, 1)
 
             # check the similarity again on the clipped data and pick best one
             loss_new = ce_loss(theta_t(x_), y)
             
-            # grads_new, = ch.autograd.grad(loss_new, [x_])
+            # Recompute losses after data clipping
             grads_new = ch.autograd.grad(loss_new, theta_t.parameters())
             # reconstruction loss for maximizing the cosine similarity
-            reconst_loss_new, _ = dataset_gradient_loss(grads_new, weight_diffs, dataset_gradients)
+            reconst_loss_new, _ = dataset_gradient_loss(
+                grads_new, weight_diffs, dataset_gradients)
 
             # Keep track of best loss, class
             if best_loss > reconst_loss_new:
@@ -470,8 +473,6 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
 
             # Stop optimization if loss seems to have converged
             this_iter_loss_on_clipped_data = reconst_loss_new.item()
-            # print("(x*,y*) loss stagnation", prev_loss,
-            #     this_iter_loss_on_clipped_data)
 
             # if np.abs(prev_loss - this_iter_loss_on_clipped_data) < 1e-6:
             #     print("(x*,y*) loss stagnation", prev_loss,

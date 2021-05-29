@@ -137,17 +137,25 @@ def modelTargetPoisoning(model_p, logger, args):
 
         # Line 4: Compute (x*, y*)
         if args.optim_type == "lookup":
+            # Loss-difference based lookup method
             (x_opt, y_opt), best_loss = mtp_utils.lookup_based_optimal(
                 theta_t=model_t, theta_p=model_p, loader=loader_optim,
                 n_classes=ds_second.n_classes, random=args.random,
                 lossfn=args.loss, filter=args.filter, verbose=True)
         elif args.optim_type == "dataset_grad":
-            # Worked: 95% error, 100 steps, 5 trials, 1e-2 step size, 20 repeats
-            # Running: 100% error, 100 steps, 20 trials, 1e-2, 10 repeats
+            # Dataset-gradient alignment loss based optimization
             (x_opt, y_opt), best_loss = mtp_utils.dataset_grad_optimal(
                 theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
-                n_classes=ds_second.n_classes, trials=args.optim_trials, num_steps=args.optim_steps,
-                step_size=args.optim_lr, verbose=True,  ds=ds)
+                n_classes=ds_second.n_classes, trials=args.optim_trials, ds=ds,
+                num_steps=args.optim_steps, step_size=args.optim_lr,
+                verbose=True, signed=args.signed)
+        elif args.optim_type == "loss_difference":
+            # Loss difference based optimization
+            (x_opt, y_opt), best_loss = mtp_utils.find_optimal_using_optim(
+                theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, num_steps=args.optim_steps,
+                trials=args.optim_trials,  step_size=args.optim_lr,
+                filter=args.filter, verbose=True)
         else:
             raise NotImplemented("Loss optimization method not implemented")
 
@@ -278,14 +286,16 @@ if __name__ == "__main__":
     parser.add_argument('--path_2', default="./data/datasets/MNIST17/split_2.pt",
                         help='Path to second split of dataset')
     parser.add_argument('--optim_type', default="lookup",
-                        choices=["dataset_grad", "lookup"],
+                        choices=["dataset_grad", "lookup", "loss_difference"],
                         help='Optimization method to compute (x*, y*)')
     parser.add_argument('--optim_lr', default=1e-2,
                         type=float, help='Step size for optimization step')
     parser.add_argument('--optim_steps', default=100,
-                        type=int, help='NUmber of steps for optimization step')
+                        type=int, help='Number of steps for optimization step')
     parser.add_argument('--optim_trials', default=5,
                         type=int, help='Number of trials for optimization step')
+    parser.add_argument('--signed', action="store_true",
+                        help='Use signed gradient loss function')
 
     # Different levels of verbose
     parser.add_argument('--verbose', action="store_true",
@@ -359,7 +369,9 @@ if __name__ == "__main__":
             "_" + args.optim_type +
             "_" + str(args.model_arch) +
             "_" + str(args.n_copies) +
-            "_" + str(args.optim_trials) + 
+            "_" + str(args.optim_steps) +
+            "_" + str(args.optim_trials) +
+            "_signed=" + str(args.signed) +
             "_" + str(args.seed))
         utils.ensure_dir_exists(log_dir)
         logger = SummaryWriter(log_dir=log_dir, flush_secs=10)

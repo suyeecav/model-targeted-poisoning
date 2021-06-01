@@ -288,7 +288,8 @@ if __name__ == "__main__":
 
         # Print accuracies on target/non-target data
         # On seen (train) and unseen (val) data
-        print(utils.pink_print("Ratio %.3f" % (ratio)))
+        if not args.use_given_data:
+            print(utils.pink_print("Ratio %.3f" % (ratio)))
         print("Total Acc: %.3f" % test_acc)
         print('Train Target Acc : %.3f' % trn_sub_acc)
         print('Train Collat Acc : %.3f' % trn_nsub_acc)
@@ -307,8 +308,8 @@ if __name__ == "__main__":
                 Y = [p[la] for p in all_stats]
                 plt.plot(X, Y, label=la)
             plt.legend()
-            plt.savefig("./data/visualize/run_info_pr-%.2f_seed-%d_arch-%s_wd-%f.png" %
-                        (ratio, args.seed, args.model_arch, args.weight_decay))
+            plt.savefig("./data/visualize/run_info_dataset-%s_pr-%.2f_seed-%d_arch-%s_wd-%f_bs-%d.png" %
+                        (args.dataset, ratio, args.seed, args.model_arch, args.weight_decay, args.batch_size))
 
 
         # Purpose of this mode is just to train model once

@@ -81,18 +81,20 @@ def get_model_metrics(model, loader, target_prop=None, lossfn="ce",
 
                 # Pick predictions accordingly
                 preds_prop, preds_noprop = preds[prop_ones], preds[noprop_ones]
-                # Updat metrics on prop data
-                acc_meter.update(preds_prop.eq(
-                    y[prop_ones].view_as(preds_prop)).sum().item(),
-                    prop_ones.shape[0])
-                loss_meter.update(
-                    loss[prop_ones].sum().item(), prop_ones.shape[0])
-                # Updat metrics on non-prop data
-                noprop_acc_meter.update(preds_noprop.eq(
-                    y[noprop_ones].view_as(preds_noprop)).sum().item(),
-                    noprop_ones.shape[0])
-                noprop_loss_meter.update(
-                    loss[noprop_ones].sum().item(), noprop_ones.shape[0])
+                # Update metrics on prop data
+                if prop_ones.shape[0] > 0:
+                    acc_meter.update(preds_prop.eq(
+                        y[prop_ones].view_as(preds_prop)).sum().item(),
+                        prop_ones.shape[0])
+                    loss_meter.update(
+                        loss[prop_ones].sum().item(), prop_ones.shape[0])
+                # Update metrics on non-prop data
+                if noprop_ones.shape[0] > 0:
+                    noprop_acc_meter.update(preds_noprop.eq(
+                        y[noprop_ones].view_as(preds_noprop)).sum().item(),
+                        noprop_ones.shape[0])
+                    noprop_loss_meter.update(
+                        loss[noprop_ones].sum().item(), noprop_ones.shape[0])
 
     # Return metrics
     metrics_tuple = (acc_meter.avg, loss_meter.avg)

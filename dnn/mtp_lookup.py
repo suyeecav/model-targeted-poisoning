@@ -77,6 +77,7 @@ def modelTargetPoisoning(model_p, logger, args):
     print()
 
     # Line 2: Iterate until stopping criteria met
+    tst_sub_acc = 1.0
     best_loss = np.inf
     num_iters = 0
     condition = True
@@ -166,6 +167,11 @@ def modelTargetPoisoning(model_p, logger, args):
                                (best_loss.item(), pred_t.argmax(1),
                                 pred_p.argmax(1), y_opt)))
 
+        # Set n_copies dynamically, if requested
+        n_copies = args.n_copies
+        if args.dynamic_repeat:
+            n_copies = mtp_utils.dynamic_n(tst_sub_acc, args.n_copies)
+        
         # Line 5: Add (x*, y*) to D_p
         for _ in range(args.n_copies):
             D_p[0].append(x_opt.cpu())
@@ -296,6 +302,8 @@ if __name__ == "__main__":
                         type=int, help='Number of trials for optimization step')
     parser.add_argument('--signed', action="store_true",
                         help='Use signed gradient loss function')
+    parser.add_argument('--dynamic_repeat', action="store_true",
+                        help='n_repeats set dynamically')
 
     # Different levels of verbose
     parser.add_argument('--verbose', action="store_true",
@@ -372,6 +380,8 @@ if __name__ == "__main__":
             "_" + str(args.optim_steps) +
             "_" + str(args.optim_trials) +
             "_signed=" + str(args.signed) +
+            "_dynamic_n=" + str(args.dynamic_repeat) +
+            "_" + str(args.optim_lr) +
             "_" + str(args.seed))
         utils.ensure_dir_exists(log_dir)
         logger = SummaryWriter(log_dir=log_dir, flush_secs=10)

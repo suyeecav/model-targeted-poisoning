@@ -334,26 +334,33 @@ def lookup_based_optimal(theta_t, theta_p, loader,
     return (best_x, best_y), best_loss
 
 
-def dataset_gradient_loss(gradients, model_diff_grads, dataset_grads):
+def dataset_gradient_loss(gradients, model_diff_grads, dataset_grads, ensemble_p=False):
     # cosine similarity as the loss function
     cos = ch.nn.CosineSimilarity(dim=0, eps=1e-6)
     totcost = 0.
     indies = []
-    weights = [1, 1, 1, 1, 1, 1]
     for i in range(len(gradients)):
-        vec_1 = model_diff_grads[i].flatten()
         vec_2 = dataset_grads[i].flatten() + gradients[i].flatten()
-        cost = cos(vec_1, vec_2)
-        totcost += (1 - cost) #* weights[i]
+        if ensemble_p:
+            cost = 0.
+            for mdg in model_diff_grads[i]:
+                vec_1 = mdg.flatten()
+                cost += cos(vec_1, vec_2)
+            cost /= len(model_diff_grads[i])
+        else:
+            vec_1 = model_diff_grads[i].flatten()
+            cost = cos(vec_1, vec_2)
+        totcost += (1 - cost)
         indies.append(cost.item())
     return totcost / len(gradients), indies
 
 
 def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
-                          trials=10, num_steps=200, step_size=1e-2,
-                          verbose=True, start_with=None, dynamic_lr=False,
-                          ensemble_p=False, ds=None, signed=False):
-    
+                         trials=10, num_steps=200, step_size=1e-2,
+                         verbose=True, start_with=None, dynamic_lr=False,
+                         ensemble_p=False, ds=None, signed=False,
+                         batch_sample_estimate=False):
+
     # Put both models in evaluation mode
     theta_t.eval()
     if ensemble_p:
@@ -366,7 +373,7 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
 
     if verbose:
         print(utils.yellow_print("[Computing optimal x*, y*]"))
-    
+
     if start_with is None:
         # Initialize with random data
         x_s = ch.rand(*((n_classes * trials,) + input_shape)).cuda()
@@ -378,23 +385,38 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
         # Start with provided data
         x_s, ys = start_with[0].cuda(), start_with[1].cuda()
 
-    # get summed gradients from theta_t to theta_p 
+    # get summed gradients from theta_t to theta_p
     theta_t_ws = list(utils.get_relevant_params(theta_t.named_parameters()))
-    theta_p_ws = list(utils.get_relevant_params(theta_p.named_parameters()))
+    if ensemble_p:
+        theta_p_ws = [list(utils.get_relevant_params(
+            tp.named_parameters())) for tp in theta_p]
+    else:
+        theta_p_ws = list(utils.get_relevant_params(
+            theta_p.named_parameters()))
 
     weight_diffs = []
-    for i in range(len(theta_t_ws)):
-        weight_diff = (theta_t_ws[i] - theta_p_ws[i])
-        weight_diff = weight_diff.clone().detach().requires_grad_(False)
-        weight_diffs.append(weight_diff)
-    
+    if ensemble_p:
+        for i in range(len(theta_p_ws[0])):
+            weight_diff = []
+            for j in range(len(theta_p_ws)):
+                weight_diff_tp = (theta_t_ws[i] - theta_p_ws[j][i])
+                weight_diff_tp = weight_diff_tp.clone().detach().requires_grad_(False)
+                weight_diff.append(weight_diff_tp)
+            weight_diffs.append(weight_diff)
+    else:
+        for i in range(len(theta_t_ws)):
+            weight_diff = (theta_t_ws[i] - theta_p_ws[i])
+            weight_diff = weight_diff.clone().detach().requires_grad_(False)
+            weight_diffs.append(weight_diff)
+
     # Compute dataset gradients
     # Can be done more efficiently by caching gradients on D_c, but we will worry about that later
     dataset_gradients = get_dataset_gradients(
         model=theta_t, ds=ds, batch_size=1024,
         weight_decay=None, verbose=False, is_train=True,
-        negate=False)
-    
+        negate=False, random_order=batch_sample_estimate,
+        collect_batch_wise=batch_sample_estimate)
+
     # Loss we care about
     ce_loss = nn.CrossEntropyLoss(reduction='mean').cuda()
 
@@ -402,7 +424,7 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
     for j in range(n_classes * trials):
         x_ = x_s[j:j+1]
         y = ys[j:j+1]
-        
+
         x_ = autograd.Variable(x_.clone(), requires_grad=True)
         optim = ch.optim.Adam([x_], lr=step_size, weight_decay=0)
 
@@ -418,11 +440,11 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
                 min_lr=1e-2,
                 threshold=1e-2,
                 threshold_mode='abs',)
-        
+
         iterator = range(num_steps)
         if verbose:
             iterator = tqdm(iterator)
-        
+
         for i in iterator:
             # Clear accumulated gradients
             theta_t.zero_grad()
@@ -436,32 +458,52 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
                                           retain_graph=True, create_graph=True))
 
             # reconstruction loss for maximizing the cosine similarity
-            reconst_loss, indies = dataset_gradient_loss(
-                grads, weight_diffs, dataset_gradients)
+            if batch_sample_estimate:
+                reconst_losses, indiess = [], []
+                for dg in dataset_gradients:
+                    rl, idis = dataset_gradient_loss(
+                        grads, weight_diffs, dg, ensemble_p=ensemble_p)
+                    reconst_losses.append(rl)
+                    indiess.append(idis)
+                reconst_loss = ch.mean(ch.stack(reconst_losses))
+                indies = np.mean(indiess, 0)
+            else:
+                reconst_loss, indies = dataset_gradient_loss(
+                    grads, weight_diffs, dataset_gradients, ensemble_p=ensemble_p)
 
             if verbose:
                 with ch.no_grad():
                     cosines = ",".join(["%.5f" % x for x in indies])
                     iterator.set_description(
-                            "[%d] Loss: %.4f | Best loss: %.4f | %s"
-                            % (y.item(), reconst_loss.item(), best_loss, cosines))
-            
+                        "[%d] Loss: %.4f | Best loss: %.4f | %s"
+                        % (y.item(), reconst_loss.item(), best_loss, cosines))
+
             # compute gradients w.r.t x data
             reconst_loss.backward()
             optim.step()
 
-            with ch.no_grad(): 
+            with ch.no_grad():
                 # Clip data back to [0, 1] range
                 x_.data = ch.clamp(x_.data, 0, 1)
 
             # check the similarity again on the clipped data and pick best one
             loss_new = ce_loss(theta_t(x_), y)
-            
+
             # Recompute losses after data clipping
             grads_new = ch.autograd.grad(loss_new, theta_t.parameters())
+
             # reconstruction loss for maximizing the cosine similarity
-            reconst_loss_new, _ = dataset_gradient_loss(
-                grads_new, weight_diffs, dataset_gradients)
+            if batch_sample_estimate:
+                reconst_losses = []
+                for dg in dataset_gradients:
+                    rl, _ = dataset_gradient_loss(
+                        grads_new, weight_diffs, dg, ensemble_p=ensemble_p)
+                    reconst_losses.append(rl)
+                reconst_loss_new = ch.mean(ch.stack(reconst_losses))
+            else:
+                reconst_loss_new, _ = dataset_gradient_loss(
+                    grads_new, weight_diffs, dataset_gradients,
+                    ensemble_p=ensemble_p)
 
             # Keep track of best loss, class
             if best_loss > reconst_loss_new:
@@ -485,9 +527,6 @@ def dataset_grad_optimal(theta_t, theta_p, input_shape, n_classes,
             if dynamic_lr:
                 # Update scheduler
                 scheduler.step(prev_loss)
-    
-    # best_x = best_x.detach().unsqueeze(0)
-    # best_y = ch.ones((1,), dtype=ch.long).cuda() * best_y.detach().item()
 
     return (best_x, best_y), best_loss
 
@@ -635,6 +674,14 @@ def train_clean_model(ds, args, epochs=None):
     model.eval()
 
     return model, optim
+
+
+def dynamic_n(current_acc, n_repeats):
+    # More compute for initial iterations
+    if current_acc >= 0.9:
+        return n_repeats // 2
+    # Slower compute for later iters
+    return n_repeats
 
 
 def log_information(logger, best_loss, x_opt, norm_diffs,

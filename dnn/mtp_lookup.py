@@ -149,7 +149,8 @@ def modelTargetPoisoning(model_p, logger, args):
                 theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
                 n_classes=ds_second.n_classes, trials=args.optim_trials, ds=ds,
                 num_steps=args.optim_steps, step_size=args.optim_lr,
-                verbose=True, signed=args.signed)
+                verbose=True, signed=args.signed,
+                batch_sample_estimate=args.batch_sample_estimate)
         elif args.optim_type == "loss_difference":
             # Loss difference based optimization
             (x_opt, y_opt), best_loss = mtp_utils.find_optimal_using_optim(
@@ -171,7 +172,7 @@ def modelTargetPoisoning(model_p, logger, args):
         n_copies = args.n_copies
         if args.dynamic_repeat:
             n_copies = mtp_utils.dynamic_n(tst_sub_acc, args.n_copies)
-        
+
         # Line 5: Add (x*, y*) to D_p
         for _ in range(args.n_copies):
             D_p[0].append(x_opt.cpu())
@@ -304,6 +305,8 @@ if __name__ == "__main__":
                         help='Use signed gradient loss function')
     parser.add_argument('--dynamic_repeat', action="store_true",
                         help='n_repeats set dynamically')
+    parser.add_argument('--batch_sample_estimate', action="store_true",
+                        help='estimate dataset gradients on batches')
 
     # Different levels of verbose
     parser.add_argument('--verbose', action="store_true",
@@ -379,8 +382,11 @@ if __name__ == "__main__":
             "_" + str(args.n_copies) +
             "_" + str(args.optim_steps) +
             "_" + str(args.optim_trials) +
+            "_iters=" + str(args.iters) +
+            "_epochs=" + str(args.epochs) +
             "_signed=" + str(args.signed) +
             "_dynamic_n=" + str(args.dynamic_repeat) +
+            "_batch_estimate=" + str(args.batch_sample_estimate) +
             "_" + str(args.optim_lr) +
             "_" + str(args.seed))
         utils.ensure_dir_exists(log_dir)

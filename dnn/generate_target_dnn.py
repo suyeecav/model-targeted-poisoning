@@ -7,7 +7,8 @@ import numpy as np
 import os
 import utils
 import datasets
-
+# import matplotlib
+# matplotlib.use('TKAgg')
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 mpl.rcParams['figure.dpi'] = 200
@@ -133,8 +134,19 @@ def train_poisoned_model(model, callable_ds, poison_ratio, args):
     # Poison data per batch
     elif args.poison_mode == "batch":
         ds = callable_ds()
+        ds_clean = callable_ds()
+
+        batch_size = args.batch_size
+        shuffle = True
+        if batch_size == -1:
+            batch_size = len(ds.train)
+            shuffle = False
+
         train_loader, val_loader = ds.get_loaders(args.batch_size)
-        model, _, _ = dnn_utils.train_model(
+        clean_train_loader, _ = ds_clean.get_loaders(
+            batch_size, shuffle=shuffle)
+
+        return_data = dnn_utils.train_model(
             model, (train_loader, val_loader), epochs=args.epochs,
             c_rule=args.c_rule, n_classes=ds.n_classes,
             weight_decay=args.weight_decay,
@@ -144,7 +156,14 @@ def train_poisoned_model(model, callable_ds, poison_ratio, args):
             no_val=True,
             low_confidence=args.low_confidence,
             get_metrics_at_epoch_end=args.poison_class,
+            clean_train_loader=clean_train_loader,
+            study_mode=args.study_mode,
             loss_fn=args.loss)
+        
+        if args.study_mode:
+            model, _, _, all_stats = return_data
+        else:
+            model, _, _ = return_data
 
     # Posion data at the start of each epoch
     elif args.poison_mode == "epoch":
@@ -318,8 +337,8 @@ if __name__ == "__main__":
             exit(0)
 
         # Save current model
-        model_name = "seed-{}_ratio-{}_mode-{}_loss-{}.pth".format(
-            args.seed, ratio, args.poison_mode, train_loss)
+        model_name = "seed-{}_ratio-{}_mode-{}_loss-{}_bs-{}.pth".format(
+            args.seed, ratio, args.poison_mode, train_loss, args.batch_size)
         ch.save(copy.deepcopy(model).state_dict(),
                 os.path.join(model_dir, model_name))
         print("Saved model to %s" % os.path.join(model_dir, model_name))

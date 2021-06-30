@@ -4,6 +4,7 @@ __pycache__/*
 data/datasets/*
 .vscode/*
 data/models/*
+data/models_order_control/*
 data/logs*/*
 data/nosaveruns/*
 data/logs_indis_filter/*

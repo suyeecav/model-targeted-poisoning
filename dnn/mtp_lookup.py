@@ -2,6 +2,7 @@ import dnn_utils
 import torch as ch
 import numpy as np
 import mtp_utils
+from tqdm import tqdm
 import datasets
 import argparse
 import utils
@@ -124,12 +125,18 @@ def modelTargetPoisoning(model_p, logger, args):
                               ) / args.increase_every)
 
             # Train model
-            for e in range(iters):
+            iterator = tqdm(range(iters))
+            for e in iterator:
                 # Train epoch
-                dnn_utils.epoch(model=model_t, loader=data_loader,
+                loss_, acc_ = dnn_utils.epoch(model=model_t, loader=data_loader,
                                 optimizer=optim, epoch_num=e+1,
                                 c_rule=None, n_classes=None,
-                                verbose=True, lossfn=args.loss)
+                                verbose=False, lossfn=args.loss)
+
+                iterator_string = '[Train] Epoch %d, Loss: %.4f, Acc: %.4f' % (
+                    e + 1, loss_, acc_)
+                
+                iterator.set_description(utils.cyan_print(iterator_string))
         else:
             model_t = model_t_pretrained
 

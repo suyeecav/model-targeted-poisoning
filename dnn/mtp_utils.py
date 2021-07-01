@@ -206,9 +206,9 @@ def find_optimal_using_optim(theta_t, theta_p, input_shape, n_classes,
             with ch.no_grad():
                 useful = ch.mean(1. * (ch.argmax(theta_t(x_), 1) != y)).item()
                 iterator.set_description(
-                    "[%d] Mean loss: %.4f, | Best loss: %.4f | (Mean) Loss_t: %.3f,"
+                    "Mean loss: %.4f, | Best loss: %.4f | (Mean) Loss_t: %.3f,"
                     " (Mean) Loss_p: %.3f | | useful: %.2f" %
-                    (y.item(), (-loss).mean(), best_loss.item(), loss_t.mean(), loss_p.mean(), useful))
+                    ((-loss).mean(), best_loss.item(), loss_t.mean(), loss_p.mean(), useful))
 
         # Compute gradients
         loss = ch.mean(loss)

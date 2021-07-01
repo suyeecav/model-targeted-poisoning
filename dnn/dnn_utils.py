@@ -162,7 +162,6 @@ def epoch(model, loader, optimizer, epoch_num, c_rule, n_classes,
                     x, y, corrupt_class, poison_ratio,
                     n_classes, c_rule, add_to_self=True,
                     selection=pick_indices)
-                print("Oops did I poison data???")
 
             # Shift data to GPU
             if specific is None:
@@ -208,8 +207,7 @@ def train_model(model, loaders, epochs, c_rule,
                 no_val=False, low_confidence=False,
                 get_metrics_at_epoch_end=None,
                 clean_train_loader=None,
-                study_mode=False,
-                loss_fn="ce"):
+                study_mode=False, loss_fn="ce"):
     if save_path is None:
         save_option = 'none'
     if save_option not in ['best', 'last', 'none']:

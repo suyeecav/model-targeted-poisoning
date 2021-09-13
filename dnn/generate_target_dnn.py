@@ -28,9 +28,9 @@ def identify_before_train(model, args, ratio, blind=False):
         model_, _, _ = dnn_utils.train_model(
             model_, (train_loader, val_loader), epochs=1,
             c_rule=None, n_classes=ds.n_classes,
-            weight_decay=args.weight_decay,
-            lr=args.lr, verbose=False,
-            no_val=True,)
+            weight_decay=args.weight_decay, early_stop=args.early_stop,
+            lr=args.lr, verbose=False, no_val=True,
+            use_plateau_scheduler=args.use_plateau_scheduler,)
     else:
         model_ = model
 
@@ -47,7 +47,7 @@ def epoch_wise_corruption(model, callable_ds, lr, epochs,
                           c_rule, weight_decay, verbose=False,
                           low_confidence=False, loss_fn="ce",
                           offset=3):
-    optim = ch.optim.Adam(model.parameters(), lr=args.lr,
+    optim = ch.optim.Adam(model.parameters(), lr=lr,
                           weight_decay=weight_decay)
     iterator = tqdm(range(epochs))
     for e in iterator:
@@ -118,9 +118,9 @@ def train_poisoned_model(model, callable_ds, poison_ratio, args):
         return_data = dnn_utils.train_model(
             model, (train_loader, val_loader), epochs=args.epochs,
             c_rule=args.c_rule, n_classes=ds.n_classes,
-            weight_decay=args.weight_decay,
+            weight_decay=args.weight_decay, early_stop=args.early_stop,
             lr=args.lr, verbose=args.verbose,
-            no_val=True,
+            no_val=True, use_plateau_scheduler=args.use_plateau_scheduler,
             get_metrics_at_epoch_end=args.poison_class,
             clean_train_loader=clean_train_loader,
             study_mode=args.study_mode,
@@ -152,8 +152,8 @@ def train_poisoned_model(model, callable_ds, poison_ratio, args):
             weight_decay=args.weight_decay,
             lr=args.lr, verbose=args.verbose,
             corrupt_class=args.poison_class,
-            poison_ratio=poison_ratio,
-            no_val=True,
+            poison_ratio=poison_ratio, early_stop=args.early_stop,
+            no_val=True, use_plateau_scheduler=args.use_plateau_scheduler,
             low_confidence=args.low_confidence,
             get_metrics_at_epoch_end=args.poison_class,
             clean_train_loader=clean_train_loader,
@@ -233,6 +233,10 @@ if __name__ == "__main__":
                         help="Directory to save models in")
     parser.add_argument('--study_mode', action="store_true",
                         help="Plot statistics across epochs")
+    parser.add_argument('--use_plateau_scheduler', action="store_true",
+                        help="Use LR scheduler based on loss plateau")
+    parser.add_argument('--early_stop', action="store_true",
+                        help="Use early stopping, if requested")
     parser.add_argument('--poison_rates', type=str,
                         default="0.4",
                         help='Comma-separated list of poison-rates to try')

@@ -144,27 +144,50 @@ def modelTargetPoisoning(model_p, logger, args):
         model_t.eval()
 
         # Line 4: Compute (x*, y*)
+
+        # Loss-difference based lookup method
         if args.optim_type == "lookup":
-            # Loss-difference based lookup method
             (x_opt, y_opt), best_loss = mtp_utils.lookup_based_optimal(
                 theta_t=model_t, theta_p=model_p, loader=loader_optim,
                 n_classes=ds_second.n_classes, random=args.random,
                 lossfn=args.loss, filter=args.filter, verbose=True)
+
+        # Dataset-gradient alignment loss based optimization
         elif args.optim_type == "dataset_grad":
-            # Dataset-gradient alignment loss based optimization
+            
             (x_opt, y_opt), best_loss = mtp_utils.dataset_grad_optimal(
                 theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
                 n_classes=ds_second.n_classes, trials=args.optim_trials, ds=ds,
                 num_steps=args.optim_steps, step_size=args.optim_lr,
                 verbose=True, signed=args.signed,
                 batch_sample_estimate=args.batch_sample_estimate)
+
+        # Loss difference based optimization
         elif args.optim_type == "loss_difference":
-            # Loss difference based optimization
+            
             (x_opt, y_opt), best_loss = mtp_utils.find_optimal_using_optim(
                 theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
                 n_classes=ds_second.n_classes, num_steps=args.optim_steps,
                 trials=args.optim_trials,  step_size=args.optim_lr,
                 filter=args.filter, verbose=True)
+        
+        # Latent-space matching-based optimization
+        elif args.optim_type == "latent_match":
+            (x_opt, y_opt), best_loss = mtp_utils.latent_matching_optim(
+                theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, num_steps=args.optim_steps,
+                trials=args.optim_trials,  step_size=args.optim_lr,
+                filter=args.filter, verbose=True)
+
+        # Finding points that "undo" learning with clean data        
+        elif args.optim_type == "opp_grad":
+
+            (x_opt, y_opt), best_loss = mtp_utils.opp_grad_optim(
+                theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, num_steps=args.optim_steps,
+                trials=args.optim_trials,  step_size=args.optim_lr,
+                ds=ds, signed=args.signed, verbose=True)
+
         else:
             raise NotImplemented("Loss optimization method not implemented")
 
@@ -300,7 +323,7 @@ if __name__ == "__main__":
     parser.add_argument('--path_2', default="./data/datasets/MNIST17/split_2.pt",
                         help='Path to second split of dataset')
     parser.add_argument('--optim_type', default="lookup",
-                        choices=["dataset_grad", "lookup", "loss_difference"],
+                        choices=mtp_utils.IMPLEMENTED_OPTIMIZATION_FUNCTIONS,
                         help='Optimization method to compute (x*, y*)')
     parser.add_argument('--optim_lr', default=1e-2,
                         type=float, help='Step size for optimization step')
@@ -392,6 +415,7 @@ if __name__ == "__main__":
             "_iters=" + str(args.iters) +
             "_epochs=" + str(args.epochs) +
             "_signed=" + str(args.signed) +
+            "_filter=" + str(args.filter) +
             "_dynamic_n=" + str(args.dynamic_repeat) +
             "_batch_estimate=" + str(args.batch_sample_estimate) +
             "_" + str(args.optim_lr) +

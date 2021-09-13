@@ -18,6 +18,28 @@ MODEL_MAPPING = {
 }
 
 
+# Github Copilot wrote this class with just the class name as prompt!
+class EarlyStopper:
+    def __init__(self, patience=10, decimal=5):
+        self.patience = patience
+        self.decimal = decimal
+        self.reset()
+
+    def track(self, loss):
+        if np.around(loss, self.decimal) >= np.around(self.best_loss, self.decimal):
+            self.num_bad_epochs += 1
+        else:
+            self.num_bad_epochs = 0
+            self.best_loss = loss
+        if self.num_bad_epochs >= self.patience:
+            return True
+        return False
+    
+    def reset(self):
+        self.num_bad_epochs = 0
+        self.best_loss = np.inf
+
+
 def get_model_names():
     return list(MODEL_MAPPING.keys())
 
@@ -202,11 +224,12 @@ def train_model(model, loaders, epochs, c_rule,
                 n_classes, save_path=None,
                 corrupt_class=None,
                 lr=1e-3, save_option='last',
-                weight_decay=0.09,
+                weight_decay=0.09, early_stop=False,
                 poison_ratio=1.0, verbose=True,
                 no_val=False, low_confidence=False,
                 get_metrics_at_epoch_end=None,
                 clean_train_loader=None,
+                use_plateau_scheduler=False,
                 study_mode=False, loss_fn="ce"):
     if save_path is None:
         save_option = 'none'
@@ -217,6 +240,9 @@ def train_model(model, loaders, epochs, c_rule,
             "Cannot identify best-val-loss model if val loss not computed")
 
     optim = ch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = ch.optim.lr_scheduler.ReduceLROnPlateau(optim, patience=5, verbose=True)
+    stopper = EarlyStopper(patience=10, decimal=5)
+
     train_loader, val_loader = loaders
 
     best_loss, best_vacc = np.inf, 0.0
@@ -283,6 +309,15 @@ def train_model(model, loaders, epochs, c_rule,
             if loss < best_loss:
                 best_model = copy.deepcopy(model)
                 best_loss, best_vacc = loss, acc
+
+        # If early stopping, stop training
+        if early_stop and stopper.track(tr_loss):
+            print("Stopping early, as requested!")
+            break
+        
+        # Take scheduler step, if enables
+        if use_plateau_scheduler:
+            scheduler.step(tr_loss)
 
     # Save latest model state, if this option is picked
     if save_option == 'last':

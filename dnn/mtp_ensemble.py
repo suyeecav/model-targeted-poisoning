@@ -33,28 +33,24 @@ def stop_cond(args, best_loss, num_iters,
     return stop_cond
 
 
-def modelTargetPoisoning(model_p, logger, args):
+def modelTargetPoisoningEnsemble(models_p, logger, args):
     # Implementation of Algorithm 1, modified for DNNs
     # Line number corresponding to the Algorithm is mentioned
     # Along with each high-level function call
 
     # Fetch appropriate dataset
-    ds = datasets.dataset_helper(args.dataset)()
+    ds = datasets.dataset_helper("memory")(path=args.path_1)
 
     # Maintain copy of clean data (for seed sampling)
-    ds_clean = datasets.dataset_helper(args.dataset)()
+    ds_clean = datasets.dataset_helper("memory")(path=args.path_1)
+
+    # Data to pick points from (for x* optimization)
+    ds_second = datasets.dataset_helper("memory")(
+        path=args.path_2)
+    loader_optim, _ = ds_second.get_loaders(1000)
 
     # Line 1: Collect poisoning points
     D_p = [[], []]
-
-    # Load poison data, if provided
-    if args.poison_data:
-        print(utils.green_print("Loading poison data"))
-        data = np.load("./data/poison_data/poison_data.npz")
-        # Normalize to 0-1 for use by model
-        all_poison_data_x = ch.from_numpy(data['x']).float() / 255.
-        all_poison_data_x = ch.unsqueeze(all_poison_data_x, 1)
-        all_poison_data_y = ch.from_numpy(data['y'])
 
     # Line 3: Since D_p is empty in first iteration, simply train it outside
     model_t_pretrained, pretrain_optim = mtp_utils.train_clean_model(ds, args)
@@ -63,6 +59,7 @@ def modelTargetPoisoning(model_p, logger, args):
     batch_size = args.batch_size
     if batch_size == -1:
         batch_size = len(ds.train)
+
     train_loader, test_loader = ds.get_loaders(batch_size)
     clean_acc, clean_total_loss = dnn_utils.get_model_metrics(
         model_t_pretrained, test_loader, lossfn=args.loss)
@@ -80,7 +77,8 @@ def modelTargetPoisoning(model_p, logger, args):
     print()
 
     # Line 2: Iterate until stopping criteria met
-    prev_loss, best_loss = np.inf, np.inf
+    tst_sub_acc = 1.0
+    best_loss = np.inf
     num_iters = 0
     condition = True
     while condition:
@@ -138,55 +136,44 @@ def modelTargetPoisoning(model_p, logger, args):
         # Make sure theta_t is in eval mode
         model_t.eval()
 
-        start_with = None
-        if args.start_opt_real:
-            # If flag set, start with real data sampled from
-            # (unpoisoned) train loader
-            batch_size = args.batch_size
-            if batch_size == -1:
-                batch_size = len(ds.train)
-            loader, _ = ds_clean.get_loaders(batch_size)
-            start_with = datasets.get_sample_from_loader(
-                loader, args.trials, ds_clean.n_classes)
-        elif args.poison_data:
-            # Sample 'num-trials' data from this
-            perm = ch.randperm(all_poison_data_x.size(0))
-            idx = perm[:args.trials]
-            start_with = (all_poison_data_x[idx], all_poison_data_y[idx])
-
         # Line 4: Compute (x*, y*)
-        if args.use_optim_for_optimal:
-            find_optimal_function = mtp_utils.find_optimal_using_optim
+        if args.optim_type == "lookup":
+            # Loss-difference based lookup method
+            (x_opt, y_opt), best_loss = mtp_utils.lookup_based_optimal(
+                theta_t=model_t, theta_p=models_p, loader=loader_optim,
+                n_classes=ds_second.n_classes, random=args.random,
+                lossfn=args.loss, filter=args.filter, verbose=True,
+                ensemble_p=True)
+        elif args.optim_type == "dataset_grad":
+            # Dataset-gradient alignment loss based optimization
+            (x_opt, y_opt), best_loss = mtp_utils.dataset_grad_optimal(
+                theta_t=model_t, theta_p=models_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, trials=args.optim_trials, ds=ds,
+                num_steps=args.optim_steps, step_size=args.optim_lr,
+                verbose=True, signed=args.signed, ensemble_p=True,
+                batch_sample_estimate=args.batch_sample_estimate)
+        elif args.optim_type == "loss_difference":
+            # Loss difference based optimization
+            (x_opt, y_opt), best_loss = mtp_utils.find_optimal_using_optim(
+                theta_t=model_t, theta_p=models_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, num_steps=args.optim_steps,
+                trials=args.optim_trials,  step_size=args.optim_lr,
+                filter=args.filter, verbose=True, ensemble_p=True)
         else:
-            find_optimal_function = mtp_utils.find_optimal
-
-        (x_opt, y_opt), best_loss = find_optimal_function(
-            theta_t=model_t, theta_p=model_p, input_shape=ds.datum_shape,
-            n_classes=ds.n_classes, trials=args.trials,
-            num_steps=args.num_steps, step_size=args.optim_lr,
-            verbose=True, start_with=start_with,
-            lossfn=args.loss, dynamic_lr=args.dynamic_lr,
-            filter=args.filter)
-
-        # If loss increased, try optimization once more
-        # With double trials, to reduce chance of bad minima
-        if args.skip_bad and best_loss > prev_loss:
-            print(utils.red_print("Re-running optimization with more seeds"))
-            (x_opt, y_opt), best_loss = find_optimal_function(
-                theta_t=model_t, theta_p=model_p, input_shape=ds.datum_shape,
-                n_classes=ds.n_classes, trials=args.trials * 2,
-                num_steps=args.num_steps, step_size=args.optim_lr,
-                verbose=True, start_with=start_with,
-                lossfn=args.loss, dynamic_lr=args.dynamic_lr)
+            raise NotImplemented("Loss optimization method not implemented")
 
         # Log some information about x*, y*
         with ch.no_grad():
-            pred_t, pred_p = model_t(x_opt), model_p(x_opt)
-            if pred_t.argmax(1) == y_opt.item():
-                print(utils.red_print("[BAD OPTIMIZATION. CHECK]"))
-        print(utils.cyan_print("Loss: %.3f Mt(x*): %d, Mp(x*): %d, y*: %d" %
-                               (best_loss.item(), pred_t.argmax(1),
-                                pred_p.argmax(1), y_opt)))
+            pred_t = model_t(x_opt)
+            preds_t = ",".join([str(mp(x_opt).argmax(1).item())
+                                for mp in models_p])
+        print(utils.cyan_print("Mt(x*): %d, Mp(x*): %s, y*: %d" %
+                               (pred_t.argmax(1), preds_t, y_opt)))
+
+        # Set n_copies dynamically, if requested
+        n_copies = args.n_copies
+        if args.dynamic_repeat:
+            n_copies = mtp_utils.dynamic_n(tst_sub_acc, args.n_copies)
 
         # Line 5: Add (x*, y*) to D_p
         for _ in range(args.n_copies):
@@ -206,15 +193,17 @@ def modelTargetPoisoning(model_p, logger, args):
             loader=train_loader,
             target_prop=args.poison_class,
             lossfn=args.loss)
-        norm_diffs = dnn_utils.model_l2_closeness(model_t, model_p)
+
+        norm_diffs = dnn_utils.model_l2_closeness(
+            model_t, models_p, ensemble=True)
 
         # Log information
         mtp_utils.log_information(
             logger=logger, best_loss=best_loss,
-            x_opt=x_opt, model_t=model_t, norm_diffs=norm_diffs,
+            x_opt=x_opt, norm_diffs=norm_diffs,
             trn_sub_acc=trn_sub_acc, trn_nsub_acc=trn_nsub_acc,
             tst_sub_acc=tst_sub_acc, tst_nsub_acc=tst_nsub_acc,
-            num_iters=num_iters + 1, args=args)
+            num_iters=num_iters + 1, args=args, label=y_opt)
 
         # Line 6: Get ready to check condition
         condition = stop_cond(args=args, best_loss=best_loss,
@@ -224,9 +213,6 @@ def modelTargetPoisoning(model_p, logger, args):
 
         # Keep track of no. of iterations
         num_iters += 1
-
-        # Keep track of loss from previous iteration
-        prev_loss = best_loss.item()
 
     # Line 7: Return poison data
     return D_p, model_t
@@ -243,40 +229,33 @@ if __name__ == "__main__":
     parser.add_argument('--model_arch', default='lenet',
                         choices=dnn_utils.get_model_names(),
                         help='Victim model architecture')
-    parser.add_argument('--dataset', default='mnist',
-                        choices=datasets.get_dataset_names(),
-                        help="Which dataset to use?")
     parser.add_argument('--batch_size', default=-1, type=int,
                         help='Batch size while training models')
-    parser.add_argument('--online_alg_criteria', default='norm',
+    parser.add_argument('--online_alg_criteria', default='max_loss',
                         choices=['max_loss', 'norm'],
                         help='Stop criteria of online alg: max_loss or norm')
-    parser.add_argument('--poison_model_path', type=str,
+    parser.add_argument('--poison_model_dir', type=str,
+                        default="./data/models/mnist17_first/ensemble/",
                         help='Path to saved poisoned-classifier')
     parser.add_argument('--log_path', type=str,
-                        default="./data/logs",
+                        default="./data/logs_dsgrad_ensemble",
                         help='Path to save logs')
     parser.add_argument('--theta_values', type=str,
-                        default="0.7",
+                        default="0.99",
                         help='Comma-separated list of theta values to try')
-    parser.add_argument('--poison_class', default=4,
-                        type=int,
-                        choices=list(range(10)),
+    parser.add_argument('--poison_class', default=0,
+                        type=int, choices=list(range(10)),
                         help='Which class to target for corruption')
     parser.add_argument('--loss', default="ce",
                         choices=["ce", "hinge"],
                         help='Loss function to use while training models')
 
-    # Sample from data that was used for poisoning, if provided
-    parser.add_argument('--poison_data', action="store_true",
-                        help='Load poisoned data, use that as starting point')
-
     # Params for pre-training model
-    parser.add_argument('--pretrain_weight_decay', default=0.05,
+    parser.add_argument('--pretrain_weight_decay', default=0.01,
                         type=float, help='Weight decay while pre-training')
-    parser.add_argument('--epochs', default=15, type=int,
+    parser.add_argument('--epochs', default=20, type=int,
                         help='Epochs while pre-training models')
-    parser.add_argument('--pretrain_lr', default=5e-3, type=float,
+    parser.add_argument('--pretrain_lr', default=2e-3, type=float,
                         help='Learning rate for models')
 
     # some params related to online algorithm, use the default
@@ -290,12 +269,9 @@ if __name__ == "__main__":
     parser.add_argument('--require_acc', action="store_true",
                         help="If true, terminate when "
                         "accuracy requirement is achieved")
-    parser.add_argument('--start_opt_real', action="store_true",
-                        help="If true, initialize (x*, y*) "
-                        "with actual data instead of random")
 
     # Params for computing optimal w_t
-    parser.add_argument('--iters', default=15, type=int,
+    parser.add_argument('--iters', default=20, type=int,
                         help='Number of iterations while optimizing w_t')
     parser.add_argument('--seed', default=2021, type=int,
                         help='Seed for weight init')
@@ -310,20 +286,31 @@ if __name__ == "__main__":
                         help='Add epoch for every # points')
 
     # Params for (x*, y*) computation
-    parser.add_argument('--trials', default=50, type=int,
-                        help='Number of trials while searching for x*, y*')
-    parser.add_argument('--n_copies', default=1, type=int,
+    parser.add_argument('--n_copies', default=10, type=int,
                         help='Number of copies per (x*,y*) to be added')
-    parser.add_argument('--num_steps', default=2000, type=int,
-                        help='Number of steps while searching for x*, y*')
-    parser.add_argument('--optim_lr', default=1e-2, type=float,
-                        help='Learning rate while searching for x*, y*')
-    parser.add_argument('--use_optim_for_optimal', action="store_true",
-                        help='Use optimizer (ADAM) to search for x*, y*')
-    parser.add_argument('--dynamic_lr', action="store_true",
-                        help='Use scheduler to reduce LR on plateau')
+    parser.add_argument('--random', action="store_true",
+                        help='Use random selection for points')
     parser.add_argument('--filter', action="store_true",
                         help='Apply filter when picking x*, y*')
+    parser.add_argument('--path_1', default="./data/datasets/MNIST17/split_1.pt",
+                        help='Path to first split of dataset')
+    parser.add_argument('--path_2', default="./data/datasets/MNIST17/split_2.pt",
+                        help='Path to second split of dataset')
+    parser.add_argument('--optim_type', default="dataset_grad",
+                        choices=["dataset_grad", "lookup", "loss_difference"],
+                        help='Optimization method to compute (x*, y*)')
+    parser.add_argument('--optim_lr', default=1e-2,
+                        type=float, help='Step size for optimization step')
+    parser.add_argument('--optim_steps', default=100,
+                        type=int, help='Number of steps for optimization step')
+    parser.add_argument('--optim_trials', default=5,
+                        type=int, help='Number of trials for optimization step')
+    parser.add_argument('--signed', action="store_true",
+                        help='Use signed gradient loss function')
+    parser.add_argument('--dynamic_repeat', action="store_true",
+                        help='n_repeats set dynamically')
+    parser.add_argument('--batch_sample_estimate', action="store_true",
+                        help='estimate dataset gradients on batches')
 
     # Different levels of verbose
     parser.add_argument('--verbose', action="store_true",
@@ -349,48 +336,48 @@ if __name__ == "__main__":
         args.verbose_pretrain = True
         args.verbose_precomp = True
 
-    if args.dynamic_lr and (not args.use_optim_for_optimal):
-        raise ValueError("Dynamic LR only supported for optimizer currently")
-
-    if args.skip_bad and (args.start_opt_real or args.poison_data):
-        raise ValueError("Re-run and real/poison start data not supported yet.")
-
     # Print all arguments
     utils.flash_utils(args)
 
     # Get number of classes
-    n_classes = datasets.dataset_helper(args.dataset)().n_classes
+    ds_obj = datasets.dataset_helper("memory")(
+        path=args.path_1)
+    train_loader, test_loader = ds_obj.get_loaders(512)
+    n_classes = ds_obj.n_classes
 
-    # Load target model theta_p, set to eval mode
-    theta_p = dnn_utils.model_helper(args.model_arch)(n_classes=n_classes)
-    theta_p = theta_p.cuda()
-    theta_p.load_state_dict(ch.load(args.poison_model_path))
-    theta_p.eval()
+    # Load target models theta_p, set to eval mode
+    thetas_p = []
+    for i, mp in enumerate(os.listdir(args.poison_model_dir)):
+        tp = dnn_utils.model_helper(args.model_arch)(n_classes=n_classes)
+        tp = tp.cuda()
+        tp.load_state_dict(ch.load(os.path.join(args.poison_model_dir, mp)))
+        tp.eval()
+        thetas_p.append(tp)
 
-    # Report performance of poisoned model
-    train_loader, test_loader = datasets.dataset_helper(
-        args.dataset)().get_loaders(512)
-    clean_acc, _ = dnn_utils.get_model_metrics(theta_p, test_loader)
-    print(utils.yellow_print("[Poisoned-model] Total Acc: %.4f" % clean_acc))
-    _, clean_total_loss = dnn_utils.get_model_metrics(theta_p, train_loader)
-    print(utils.yellow_print(
-        "[Poisoned-model] Loss on train: %.4f" % clean_total_loss))
-    # Report weight norm for poisoned model
-    poisoned_norm = dnn_utils.get_model_l2_norm(theta_p).item()
-    print(utils.yellow_print(
-        "[Poisoned-model] Weights norm: %.4f" % poisoned_norm))
-    # Report accuracy on unseen population data
-    (tst_sub_acc, _), (tst_nsub_acc, _) = dnn_utils.get_model_metrics(
-        model=theta_p,
-        loader=test_loader,
-        target_prop=args.poison_class)
-    print(utils.yellow_print(
-        "[Poisoned-model] Accuracy on "
-        "population test-data: %.4f" % tst_sub_acc))
-    print(utils.yellow_print(
-        "[Poisoned-model] Accuracy on "
-        "non-population test-data: %.4f" % tst_nsub_acc))
-    print()
+        # Report performance of poisoned model
+        clean_acc, _ = dnn_utils.get_model_metrics(tp, test_loader)
+        print(utils.yellow_print(
+            "[Poisoned-model %d] Total Acc: %.4f" % (i+1, clean_acc)))
+        _, clean_total_loss = dnn_utils.get_model_metrics(
+            tp, train_loader)
+        print(utils.yellow_print(
+            "[Poisoned-model %d] Loss on train: %.4f" % (i+1, clean_total_loss)))
+        # Report weight norm for poisoned model
+        poisoned_norm = dnn_utils.get_model_l2_norm(tp).item()
+        print(utils.yellow_print(
+            "[Poisoned-model %d] Weights norm: %.4f" % (i+1, poisoned_norm)))
+        # Report accuracy on unseen population data
+        (tst_sub_acc, _), (tst_nsub_acc, _) = dnn_utils.get_model_metrics(
+            model=tp,
+            loader=test_loader,
+            target_prop=args.poison_class)
+        print(utils.yellow_print(
+            "[Poisoned-model %d] Accuracy on "
+            "population test-data: %.4f" % (i+1, tst_sub_acc)))
+        print(utils.yellow_print(
+            "[Poisoned-model %d] Accuracy on "
+            "non-population test-data: %.4f" % (i+1, tst_nsub_acc)))
+        print()
 
     for valid_theta_err in args.theta_values:
         args.err_threshold = valid_theta_err
@@ -398,9 +385,17 @@ if __name__ == "__main__":
         # Prepare logger
         log_dir = os.path.join(args.log_path, str(
             valid_theta_err) +
-            "_" + args.dataset +
+            "_mnist17split" +
+            "_" + args.optim_type +
+            "_" + str(args.model_arch) +
             "_" + str(args.n_copies) +
-            "_" + str(args.trials))
+            "_" + str(args.optim_steps) +
+            "_" + str(args.optim_trials) +
+            "_signed=" + str(args.signed) +
+            "_dynamic_n=" + str(args.dynamic_repeat) +
+            "_batch_estimate=" + str(args.batch_sample_estimate) +
+            "_" + str(args.optim_lr) +
+            "_" + str(args.seed))
         utils.ensure_dir_exists(log_dir)
         logger = SummaryWriter(log_dir=log_dir, flush_secs=10)
 
@@ -408,7 +403,8 @@ if __name__ == "__main__":
             "Running attack for theta %.2f" % valid_theta_err))
 
         # Get poison data
-        poison_data, theta_t = modelTargetPoisoning(theta_p, logger, args)
+        poison_data, theta_t = modelTargetPoisoningEnsemble(
+            thetas_p, logger, args)
         dp_x = ch.cat(poison_data[0], 0).numpy()
         dp_y = ch.cat(poison_data[1], 0).numpy()
 

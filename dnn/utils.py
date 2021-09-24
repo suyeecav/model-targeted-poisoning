@@ -114,6 +114,9 @@ def poison_data(X, Y, picked, p_ratio, n_classes, c_rule,
                 add_to_self, selection=None, save_data=None,
                 offset=3):
     num_points = int(p_ratio * len(Y))
+    if num_points == 0:
+        print("[Warning] Not adding any poison data")
+        return X, Y
 
     # Identify points in target population
     subpop = ch.nonzero(Y == picked).squeeze_(1)

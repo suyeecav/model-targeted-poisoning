@@ -15,14 +15,25 @@ class LeNet(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, n_classes)
 
-    def forward(self, x):
+    def forward(self, x, all_reps=False):
         # Max pooling over a (2, 2) window
+        latents = []
         x = F.max_pool2d(F.relu(self.conv1(x)), (2, 2))
+        if all_reps:
+            latents.append(x)
         x = F.max_pool2d(F.relu(self.conv2(x)), 2)
+        if all_reps:
+            latents.append(x)
         x = x.view(x.shape[0], -1)
         x = F.relu(self.fc1(x))
+        if all_reps:
+            latents.append(x)
         x = F.relu(self.fc2(x))
+        if all_reps:
+            latents.append(x)
         x = self.fc3(x)
+        if all_reps:
+            return latents
         return x
 
 
@@ -37,13 +48,20 @@ class FlatNet(nn.Module):
         self.drop_1 = nn.Dropout(0.5)
         self.drop_2 = nn.Dropout(0.5)
 
-    def forward(self, x):
+    def forward(self, x, all_reps=False):
+        latents = []
         x = x.view(x.shape[0], -1)
         x = F.relu(self.fc1(x))
+        if all_reps:
+            latents.append(x)
         x = self.drop_1(x)
         x = F.relu(self.fc2(x))
+        if all_reps:
+            latents.append(x)
         x = self.drop_2(x)
         x = self.fc3(x)
+        if all_reps:
+            return latents
         return x
 
 
@@ -54,11 +72,16 @@ class FlatNetNoDrop(nn.Module):
         self.fc2 = nn.Linear(364, 52)
         self.fc3 = nn.Linear(52, n_classes)
 
-    def forward(self, x):
+    def forward(self, x, all_reps=False):
+        latents = []
         x = x.view(x.shape[0], -1)
         x = F.relu(self.fc1(x))
+        if all_reps:
+            latents.append(x)
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
+        if all_reps:
+            return latents
         return x
 
 
@@ -73,15 +96,22 @@ class FlatNetBN(nn.Module):
         self.bn_1 = nn.BatchNorm1d(364)
         self.bn_2 = nn.BatchNorm1d(52)
 
-    def forward(self, x):
+    def forward(self, x, all_reps=False):
+        latents = []
         x = x.view(x.shape[0], -1)
         x = F.relu(self.fc1(x))
         x = self.bn_1(x)
+        if all_reps:
+            latents.append(x)
         x = self.drop_1(x)
         x = F.relu(self.fc2(x))
         x = self.bn_2(x)
+        if all_reps:
+            latents.append(x)
         x = self.drop_2(x)
         x = self.fc3(x)
+        if all_reps:
+            return latents
         return x
 
 
@@ -94,13 +124,20 @@ class FlatNetBNNoDrop(nn.Module):
         self.bn_1 = nn.BatchNorm1d(364)
         self.bn_2 = nn.BatchNorm1d(52)
 
-    def forward(self, x):
+    def forward(self, x, all_reps=False):
+        latents = []
         x = x.view(x.shape[0], -1)
         x = F.relu(self.fc1(x))
         x = self.bn_1(x)
+        if all_reps:
+            latents.append(x)
         x = F.relu(self.fc2(x))
         x = self.bn_2(x)
+        if all_reps:
+            latents.append(x)
         x = self.fc3(x)
+        if all_reps:
+            return latents
         return x
 
 

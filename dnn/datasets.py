@@ -274,14 +274,14 @@ def safe_makedirs(path):
 
 
 def get_dataset_gradients(model, ds, batch_size, weight_decay,
-                          verbose=False, is_train=True,
-                          negate=True):
+                          verbose=False, is_train=True, negate=True,
+                          random_order=False, collect_batch_wise=False):
     # Make sure model is in eval model
     model.eval()
 
     gradients = []
     # Get specific data oaders
-    train_loader, val_loader = ds.get_loaders(batch_size, shuffle=False)
+    train_loader, val_loader = ds.get_loaders(batch_size, shuffle=random_order)
     if is_train:
         loader = train_loader
     else:
@@ -310,17 +310,25 @@ def get_dataset_gradients(model, ds, batch_size, weight_decay,
         grads = autograd.grad(
             total_loss, utils.get_relevant_params(model.named_parameters()))
 
-        # Accumulate gradients
-        if len(gradients) == 0:
-            gradients = [x.clone().detach().requires_grad_(False) for x in grads]
+        if collect_batch_wise:
+            gradients.append([x.clone().detach().requires_grad_(False) for x in grads])
         else:
-            for i, gd in enumerate(grads):
-                gradients[i] += gd.clone().detach().requires_grad_(False)
+            # Accumulate gradients
+            if len(gradients) == 0:
+                gradients = [x.clone().detach().requires_grad_(False) for x in grads]
+            else:
+                for i, gd in enumerate(grads):
+                    gradients[i] += gd.clone().detach().requires_grad_(False)
 
     if negate:
         # Negate sum, since they represent virtual GD runs
-        for i in range(len(gradients)):
-            gradients[i] *= -1
+        if collect_batch_wise:
+            for i in range(len(gradients)):
+                for j in range(len(gradients[i])):
+                    gradients[i][j] *= -1
+        else:
+            for i in range(len(gradients)):
+                gradients[i] *= -1
 
     return gradients
 

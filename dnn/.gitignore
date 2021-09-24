@@ -4,13 +4,13 @@ __pycache__/*
 data/datasets/*
 .vscode/*
 data/models/*
-data/logs/*
-data/logs_*/*
+data/models_order_control/*
+data/logs*/*
 data/nosaveruns/*
 data/logs_indis_filter/*
 data/ensemble_logs/*
 data/ensemble_mnist17_lr/*
-data/poison_data/*.npz
+data/**/*.npz
 data/*.pth
 data/indis_mnist17_models/*
 data/indis_mnist17_filter/*

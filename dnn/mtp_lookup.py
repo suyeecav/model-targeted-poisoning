@@ -2,6 +2,7 @@ import dnn_utils
 import torch as ch
 import numpy as np
 import mtp_utils
+from tqdm import tqdm
 import datasets
 import argparse
 import utils
@@ -77,6 +78,7 @@ def modelTargetPoisoning(model_p, logger, args):
     print()
 
     # Line 2: Iterate until stopping criteria met
+    tst_sub_acc = 1.0
     best_loss = np.inf
     num_iters = 0
     condition = True
@@ -123,12 +125,18 @@ def modelTargetPoisoning(model_p, logger, args):
                               ) / args.increase_every)
 
             # Train model
-            for e in range(iters):
+            iterator = tqdm(range(iters))
+            for e in iterator:
                 # Train epoch
-                dnn_utils.epoch(model=model_t, loader=data_loader,
+                loss_, acc_ = dnn_utils.epoch(model=model_t, loader=data_loader,
                                 optimizer=optim, epoch_num=e+1,
                                 c_rule=None, n_classes=None,
-                                verbose=True, lossfn=args.loss)
+                                verbose=False, lossfn=args.loss)
+
+                iterator_string = '[Train] Epoch %d, Loss: %.4f, Acc: %.4f' % (
+                    e + 1, loss_, acc_)
+                
+                iterator.set_description(utils.cyan_print(iterator_string))
         else:
             model_t = model_t_pretrained
 
@@ -136,10 +144,52 @@ def modelTargetPoisoning(model_p, logger, args):
         model_t.eval()
 
         # Line 4: Compute (x*, y*)
-        (x_opt, y_opt), best_loss = mtp_utils.lookup_based_optimal(
-            theta_t=model_t, theta_p=model_p, loader=loader_optim,
-            n_classes=ds_second.n_classes, random=args.random,
-            lossfn=args.loss, filter=args.filter, verbose=True)
+
+        # Loss-difference based lookup method
+        if args.optim_type == "lookup":
+            (x_opt, y_opt), best_loss = mtp_utils.lookup_based_optimal(
+                theta_t=model_t, theta_p=model_p, loader=loader_optim,
+                n_classes=ds_second.n_classes, random=args.random,
+                lossfn=args.loss, filter=args.filter, verbose=True)
+
+        # Dataset-gradient alignment loss based optimization
+        elif args.optim_type == "dataset_grad":
+            
+            (x_opt, y_opt), best_loss = mtp_utils.dataset_grad_optimal(
+                theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, trials=args.optim_trials, ds=ds,
+                num_steps=args.optim_steps, step_size=args.optim_lr,
+                verbose=True, signed=args.signed,
+                batch_sample_estimate=args.batch_sample_estimate)
+
+        # Loss difference based optimization
+        elif args.optim_type == "loss_difference":
+            
+            (x_opt, y_opt), best_loss = mtp_utils.find_optimal_using_optim(
+                theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, num_steps=args.optim_steps,
+                trials=args.optim_trials,  step_size=args.optim_lr,
+                filter=args.filter, verbose=True)
+        
+        # Latent-space matching-based optimization
+        elif args.optim_type == "latent_match":
+            (x_opt, y_opt), best_loss = mtp_utils.latent_matching_optim(
+                theta_t=model_t, theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, num_steps=args.optim_steps,
+                trials=args.optim_trials,  step_size=args.optim_lr,
+                filter=args.filter, verbose=True)
+
+        # Finding points that "undo" learning with clean data        
+        elif args.optim_type == "opp_grad":
+
+            (x_opt, y_opt), best_loss = mtp_utils.opp_grad_optim(
+                theta_p=model_p, input_shape=ds_second.datum_shape,
+                n_classes=ds_second.n_classes, num_steps=args.optim_steps,
+                trials=args.optim_trials,  step_size=args.optim_lr,
+                ds=ds, signed=args.signed, verbose=True)
+
+        else:
+            raise NotImplemented("Loss optimization method not implemented")
 
         # Log some information about x*, y*
         with ch.no_grad():
@@ -147,6 +197,11 @@ def modelTargetPoisoning(model_p, logger, args):
         print(utils.cyan_print("Loss: %.3f Mt(x*): %d, Mp(x*): %d, y*: %d" %
                                (best_loss.item(), pred_t.argmax(1),
                                 pred_p.argmax(1), y_opt)))
+
+        # Set n_copies dynamically, if requested
+        n_copies = args.n_copies
+        if args.dynamic_repeat:
+            n_copies = mtp_utils.dynamic_n(tst_sub_acc, args.n_copies)
 
         # Line 5: Add (x*, y*) to D_p
         for _ in range(args.n_copies):
@@ -206,16 +261,16 @@ if __name__ == "__main__":
                         choices=['max_loss', 'norm'],
                         help='Stop criteria of online alg: max_loss or norm')
     parser.add_argument('--poison_model_path', type=str,
+                        default="./data/models/seed-2021_ratio-0.6_mode-pre_loss-0.4150749979689362.pth",
                         help='Path to saved poisoned-classifier')
     parser.add_argument('--log_path', type=str,
-                        default="./data/logs_pick",
+                        default="./data/logs_pick_new",
                         help='Path to save logs')
     parser.add_argument('--theta_values', type=str,
-                        default="0.95",
+                        default="0.99",
                         help='Comma-separated list of theta values to try')
     parser.add_argument('--poison_class', default=0,
-                        type=int,
-                        choices=list(range(10)),
+                        type=int, choices=list(range(10)),
                         help='Which class to target for corruption')
     parser.add_argument('--loss', default="ce",
                         choices=["ce", "hinge"],
@@ -267,6 +322,21 @@ if __name__ == "__main__":
                         help='Path to first split of dataset')
     parser.add_argument('--path_2', default="./data/datasets/MNIST17/split_2.pt",
                         help='Path to second split of dataset')
+    parser.add_argument('--optim_type', default="lookup",
+                        choices=mtp_utils.IMPLEMENTED_OPTIMIZATION_FUNCTIONS,
+                        help='Optimization method to compute (x*, y*)')
+    parser.add_argument('--optim_lr', default=1e-2,
+                        type=float, help='Step size for optimization step')
+    parser.add_argument('--optim_steps', default=100,
+                        type=int, help='Number of steps for optimization step')
+    parser.add_argument('--optim_trials', default=5,
+                        type=int, help='Number of trials for optimization step')
+    parser.add_argument('--signed', action="store_true",
+                        help='Use signed gradient loss function')
+    parser.add_argument('--dynamic_repeat', action="store_true",
+                        help='n_repeats set dynamically')
+    parser.add_argument('--batch_sample_estimate', action="store_true",
+                        help='estimate dataset gradients on batches')
 
     # Different levels of verbose
     parser.add_argument('--verbose', action="store_true",
@@ -337,8 +407,18 @@ if __name__ == "__main__":
         log_dir = os.path.join(args.log_path, str(
             valid_theta_err) +
             "_mnist17split" +
+            "_" + args.optim_type +
             "_" + str(args.model_arch) +
             "_" + str(args.n_copies) +
+            "_" + str(args.optim_steps) +
+            "_" + str(args.optim_trials) +
+            "_iters=" + str(args.iters) +
+            "_epochs=" + str(args.epochs) +
+            "_signed=" + str(args.signed) +
+            "_filter=" + str(args.filter) +
+            "_dynamic_n=" + str(args.dynamic_repeat) +
+            "_batch_estimate=" + str(args.batch_sample_estimate) +
+            "_" + str(args.optim_lr) +
             "_" + str(args.seed))
         utils.ensure_dir_exists(log_dir)
         logger = SummaryWriter(log_dir=log_dir, flush_secs=10)

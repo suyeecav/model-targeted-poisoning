@@ -15,7 +15,7 @@ pyparsing==2.4.6
 python-dateutil==2.8.1
 pytz==2019.3
 scikit-learn==0.20.3
-scipy==1.2.3
+scipy==1.10.0
 scs==2.1.1.post2
 six==1.14.0
 subprocess32==3.5.4
